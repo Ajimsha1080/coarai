@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+    --font-serif: 'Merriweather', serif;
+    --font-display: 'Playfair Display', serif;
+    --font-sans: 'Inter', sans-serif;
+    --font-mono: 'Roboto Mono', monospace;
+
+    /* Brand Green Palette */
+    --color-brand-50: #f0fdf4;
+    --color-brand-100: #dcfce7;
+    --color-brand-200: #bbf7d0;
+    --color-brand-300: #86efac;
+    --color-brand-400: #4ade80;
+    --color-brand-500: #22c55e;
+    --color-brand-600: #16a34a;
+    --color-brand-700: #1a8917;
+    /* Medium Green (Target) */
+    --color-brand-800: #166534;
+    --color-brand-900: #14532d;
+    --color-brand-950: #052e16;
+
+    /* Dark Mode Palette */
+    --color-dark-900: #000000;
+    --color-dark-800: #242424;
+    --color-dark-700: #757575;
+}
+
+@layer base {
+    body {
+        font-family: var(--font-serif);
+        color: var(--color-dark-800);
+        background-color: white;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+        font-family: var(--font-display);
+        font-weight: 500;
+        color: var(--color-dark-900);
+    }
+}
+
+@layer utilities {
+    .clean-panel {
+        @apply bg-white border border-gray-200;
+    }
+
+    .clean-card {
+        @apply bg-white border border-gray-100 shadow-sm transition-all duration-300;
+    }
+
+    .clean-card:hover {
+        @apply shadow-md transform -translate-y-1;
+        border-color: var(--color-brand-700);
+    }
+
+    .text-gradient {
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-image: linear-gradient(to right, var(--color-brand-700), var(--color-brand-800));
+    }
+
+    /* SEO Audit Dark Theme Utilities */
+    .seo-dark-bg {
+        @apply bg-black text-white;
+    }
+
+    .glass-panel-dark {
+        @apply bg-white/5 border border-white/10 backdrop-blur-md shadow-xl;
+    }
+
+    .glass-card-dark {
+        @apply bg-white/5 border border-white/10 backdrop-blur-sm transition-all duration-300 rounded-xl;
+    }
+
+    .glass-card-dark:hover {
+        @apply bg-white/10 border-white/20 transform -translate-y-1;
+        box-shadow: 0 10px 40px -10px rgba(255, 255, 255, 0.1);
+    }
+}
