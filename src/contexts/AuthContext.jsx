@@ -1,11 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import {
-    signInWithPopup,
-    GoogleAuthProvider,
-    signOut,
-    onAuthStateChanged
-} from 'firebase/auth';
-import { auth } from '../firebase';
+import React, { useContext, useState, useEffect, createContext } from "react";
+import { auth, googleProvider } from "../firebase";
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 
 const AuthContext = createContext();
 
@@ -17,31 +12,19 @@ export function AuthProvider({ children }) {
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    const googleProvider = new GoogleAuthProvider();
+    function loginWithGoogle() {
+        return signInWithPopup(auth, googleProvider);
+    }
 
-    const loginWithGoogle = async () => {
-        try {
-            console.log("Attempting Google Sign-In...");
-            const result = await signInWithPopup(auth, googleProvider);
-            console.log("Sign-In Successful:", result.user);
-            return result;
-        } catch (error) {
-            console.error("Google Sign-In Error:", error.code, error.message);
-            alert(`Sign-In Failed: ${error.message}`);
-            throw error;
-        }
-    };
-
-    const logout = () => {
+    function logout() {
         return signOut(auth);
-    };
+    }
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             setCurrentUser(user);
             setLoading(false);
         });
-
         return unsubscribe;
     }, []);
 
@@ -53,7 +36,7 @@ export function AuthProvider({ children }) {
 
     return (
         <AuthContext.Provider value={value}>
-            {loading ? <div className="min-h-screen flex items-center justify-center">Loading Prompt Co...</div> : children}
+            {!loading && children}
         </AuthContext.Provider>
     );
 }

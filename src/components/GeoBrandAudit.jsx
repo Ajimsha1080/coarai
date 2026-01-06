@@ -255,6 +255,8 @@ export default function GeoBrandAudit({ apiKey, onRequireApiKey }) {
 
         } catch (error) {
             console.error(error);
+            // Removed: API KEY INVALID check
+
             if (true) {
                 setErrorMessage(`API Warning (${error.message}). Displaying SIMULATED results.`);
                 setAuditResult({
@@ -359,7 +361,7 @@ export default function GeoBrandAudit({ apiKey, onRequireApiKey }) {
                                         value={formData.brandName}
                                         onChange={handleInputChange}
                                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500 outline-none"
-                                        placeholder="e.g. Prompting Co."
+                                        placeholder="e.g. COAR"
                                     />
                                     <p className="text-xs text-slate-400 mt-1">Used to evaluate how AI recognizes your brand as an entity.</p>
                                 </div>

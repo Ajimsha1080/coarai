@@ -5,7 +5,7 @@ export default function About() {
         <div className="pt-32 pb-20 bg-slate-50 min-h-screen">
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="text-center mb-16">
-                    <h1 className="text-4xl md:text-5xl font-display font-bold text-slate-900 mb-6">About Prompting Co.</h1>
+                    <h1 className="text-4xl md:text-5xl font-display font-bold text-slate-900 mb-6">About COAR</h1>
                     <p className="text-xl text-slate-600 max-w-2xl mx-auto">
                         We are defining the future of content in the age of Generative AI.
                     </p>
@@ -15,7 +15,7 @@ export default function About() {
                     <h2 className="text-2xl font-bold text-slate-900 mb-4">Our Mission</h2>
                     <p className="text-slate-600 leading-relaxed mb-8">
                         Traditional SEO is evolving. With the rise of Large Language Models (LLMs) like Gemini, ChatGPT, and Claude, users are getting answers directly in the search interface.
-                        Prompting Co. builds tools to help brands ensure their content is authoritative, structured, and visible in these new AI-generated results.
+                        COAR builds tools to help brands ensure their content is authoritative, structured, and visible in these new AI-generated results.
                     </p>
 
                     <h2 className="text-2xl font-bold text-slate-900 mb-4">What We Do</h2>

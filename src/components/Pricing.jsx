@@ -87,8 +87,8 @@ export default function Pricing() {
 
                             <h3 className="text-xl font-bold text-slate-900">{tier.name}</h3>
                             <div className="mt-4 flex items-baseline text-slate-900">
-                                <span className="text-4xl font-bold tracking-tight">${tier.price}</span>
-                                <span className="ml-1 text-lg font-semibold text-slate-500">/mo</span>
+                                <span className="text-5xl font-display font-bold tracking-tight">${tier.price}</span>
+                                <span className="ml-1 text-xl font-display text-slate-500">/mo</span>
                             </div>
                             <p className="mt-2 text-slate-600">{tier.description}</p>
 

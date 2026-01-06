@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { marked } from 'marked';
-import { MagnifyingGlass, Sparkle, Brain, Copy, Info, Clock, CaretRight } from '@phosphor-icons/react';
+import { MagnifyingGlass, Sparkle, Brain, Copy, Info, Clock, CaretRight, Warning, Lightning } from '@phosphor-icons/react';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import HistoryDrawer from './HistoryDrawer';
-
-const MODEL = "gemini-2.5-flash-preview-09-2025";
+import { resilientGeminiCall } from '../lib/gemini';
 
 export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey, mode = 'full' }) {
     const { currentUser } = useAuth();
@@ -18,6 +17,11 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
     const [sources, setSources] = useState([]);
     const [showResults, setShowResults] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState('Copy Markdown');
+    const [showInfo, setShowInfo] = useState(false);
+
+    // Error & Simulation State
+    const [error, setError] = useState(null);
+    const [isSimulating, setIsSimulating] = useState(false);
 
     // History State
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -48,42 +52,6 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
 
         return unsubscribe;
     }, [currentUser]);
-
-    const getAnalyzeUrl = (key) => `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`;
-    const getGenerateUrl = (key) => `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`;
-
-    const fetchGeminiApi = async (url, payload, retries = 3) => {
-        for (let i = 0; i < retries; i++) {
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) {
-                    const errorBody = await response.json();
-                    throw new Error(`API returned status ${response.status}: ${errorBody.error?.message || 'Unknown error'}`);
-                }
-
-                const result = await response.json();
-
-                if (!result.candidates || result.candidates.length === 0 || !result.candidates[0].content?.parts?.[0]?.text) {
-                    throw new Error("The model failed to return a valid response.");
-                }
-
-                return result;
-
-            } catch (error) {
-                if (i < retries - 1) {
-                    const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                } else {
-                    throw error;
-                }
-            }
-        }
-    };
 
     const searchTavily = async (query, key) => {
         if (!key || key.includes('YOUR_KEY_HERE')) {
@@ -131,7 +99,7 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
                 systemInstruction: { parts: [{ text: systemPrompt }] },
             };
 
-            const result = await fetchGeminiApi(getAnalyzeUrl(geminiKey), payload);
+            const result = await resilientGeminiCall(geminiKey, payload);
             const text = result.candidates[0].content.parts[0].text;
 
             const groundingMetadata = {
@@ -157,7 +125,7 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
                 tools: [{ googleSearch: {} }] // Enable Google Search Grounding
             };
 
-            const result = await fetchGeminiApi(getAnalyzeUrl(geminiKey), payload);
+            const result = await resilientGeminiCall(geminiKey, payload);
             const text = result.candidates[0].content.parts[0].text;
 
             // Extract grounding metadata from Gemini response if available
@@ -177,7 +145,7 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
             systemInstruction: { parts: [{ text: systemPrompt }] },
         };
 
-        const result = await fetchGeminiApi(getGenerateUrl(key), payload);
+        const result = await resilientGeminiCall(key, payload);
         return result.candidates[0].content.parts[0].text;
     };
 
@@ -209,9 +177,66 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
         }
         setSources(item.sources || []);
         setShowResults(true);
+        setError(null); // Clear errors
         setTimeout(() => {
             resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
+    };
+
+    // --- FALLBACK SIMULATION ---
+    const runSimulation = () => {
+        setIsLoading(true);
+        setError(null);
+        setIsSimulating(true);
+
+        setTimeout(() => {
+            const topicSafe = topic || "Artificial Intelligence";
+
+            // 1. Simulated Analysis
+            const simQuestions = `
+### Top Questions regarding ${topicSafe}:
+1. **What are the key benefits of using ${topicSafe} in enterprise?**
+2. **How does ${topicSafe} compare to traditional solutions?**
+3. **What is the cost structure for implementing ${topicSafe}?**
+4. **Are there security risks associated with ${topicSafe}?**
+5. **How to get started with ${topicSafe} for beginners?**
+            `;
+            setStep1Result(marked.parse(simQuestions));
+
+            // 2. Simulated Sources
+            setSources([
+                { web: { title: "Forbes Tech Analysis", uri: "#" } },
+                { web: { title: "TechCrunch Report 2024", uri: "#" } },
+                { web: { title: "Gartner Magic Quadrant", uri: "#" } }
+            ]);
+
+            // 3. Simulated Optimization
+            const simContent = `
+## The Definitive Guide to ${topicSafe}
+
+**${topicSafe}** is currently reshaping industry standards by offering automated efficiency and predictive analytics that traditional models cannot match.
+
+### Key Benefits
+*   **Cost Reduction**: Reduces operational overhead by 40% on average.
+*   **Scalability**: Automatically adjusts resources based on real-time demand.
+*   **Security**: Implement Zero Trust architecture by default.
+
+### Getting Started
+To begin with ${topicSafe}, organizations should focus on data hygiene and pilot small-scale integration before enterprise-wide rollout. Experts recommend allocating 15% of the IT budget to this transition for optimal results.
+            `;
+
+            if (mode === 'full') {
+                setStep2Result(marked.parse(simContent));
+                setRawMarkdown(simContent);
+            }
+
+            setShowResults(true);
+            setIsLoading(false);
+            setTimeout(() => {
+                resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+
+        }, 2000); // Fake delay
     };
 
     const startWorkflow = async () => {
@@ -230,9 +255,11 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
 
         setIsLoading(true);
         setShowResults(false);
+        setError(null); // Clear previous errors
         setStep1Result(null);
         setStep2Result(null);
         setRawMarkdown('');
+        setIsSimulating(false); // Reset sim flag
 
         try {
             // Step 1: Research (Questioner)
@@ -264,8 +291,8 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
             }, 100);
 
         } catch (error) {
-            console.error(error);
-            alert(`Error: ${error.message}`);
+            console.error("Workflow Failed:", error);
+            setError(error.message || "An unexpected error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -332,7 +359,7 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
                                 value={topic}
                                 onChange={(e) => setTopic(e.target.value)}
                                 placeholder="e.g., 'best enterprise CRM' or 'how to bake sourdough'"
-                                className="w-full pl-12 pr-32 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all text-lg shadow-inner outline-none"
+                                className="w-full pl-12 pr-20 sm:pr-40 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all text-base sm:text-lg shadow-inner outline-none"
                                 onKeyDown={(e) => e.key === 'Enter' && startWorkflow()}
                             />
                             <div className="absolute right-2 top-2 bottom-2 flex gap-2">
@@ -347,35 +374,66 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
                                 <button
                                     onClick={startWorkflow}
                                     disabled={isLoading}
-                                    className="px-6 bg-slate-900 text-white rounded-lg font-medium hover:bg-brand-600 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2 active:scale-95 shadow-md"
+                                    className="px-4 sm:px-6 bg-slate-900 text-white rounded-lg font-medium hover:bg-brand-600 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2 active:scale-95 shadow-md"
                                 >
                                     {isLoading ? (
                                         <>
                                             <div className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
-                                            <span>Processing...</span>
+                                            <span className="hidden sm:inline">Processing...</span>
                                         </>
                                     ) : (
                                         <>
-                                            <span>{mode === 'research' ? 'Find Questions' : 'Analyze'}</span>
+                                            <span className="hidden sm:inline">{mode === 'research' ? 'Find Questions' : 'Analyze'}</span>
                                             <MagnifyingGlass weight="bold" />
                                         </>
                                     )}
                                 </button>
                             </div>
                         </div>
-                        <p className="text-xs text-slate-400 mt-3 flex items-center gap-1 justify-between">
-                            <span className="flex items-center gap-1">
-                                <Info className="text-brand-500" weight="fill" />
-                                {mode === 'research'
-                                    ? 'Uses Tavily Search to find real user questions.'
-                                    : 'Uses Google Search Grounding to find real user questions.'}
-                            </span>
+                        <div className="mt-3 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setShowInfo(!showInfo)}
+                                    className="flex items-center gap-1 text-slate-400 hover:text-brand-500 transition-colors focus:outline-none"
+                                    title="How it works"
+                                >
+                                    <Info className="text-brand-500" weight="fill" />
+                                    <span className="text-xs font-medium border-b border-dotted border-slate-400">How it works</span>
+                                </button>
+                                {showInfo && (
+                                    <span className="text-xs text-brand-600 bg-brand-50 px-2 py-1 rounded-md animate-fade-in">
+                                        {mode === 'research'
+                                            ? 'Uses Tavily Search to find real user questions.'
+                                            : 'Uses Google Search Grounding to find real user questions.'}
+                                    </span>
+                                )}
+                            </div>
                             {!currentUser && (
-                                <span className="text-brand-600 font-medium">Log in to save your history</span>
+                                <span className="text-xs text-brand-600 font-medium">Log in to save your history</span>
                             )}
-                        </p>
+                        </div>
                     </div>
                 </div>
+
+                {/* ERROR STATE */}
+                {error && (
+                    <div className="mt-8 p-4 bg-red-50 border border-red-200 rounded-xl flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between animate-fade-in">
+                        <div className="flex items-center gap-3">
+                            <Warning className="text-red-500 text-2xl flex-shrink-0" weight="fill" />
+                            <div>
+                                <h4 className="font-bold text-red-700">Analysis Failed</h4>
+                                <p className="text-sm text-red-600">{error}</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={runSimulation}
+                            className="flex-shrink-0 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-bold shadow-sm hover:bg-red-50 transition-colors flex items-center gap-2"
+                        >
+                            <Lightning weight="fill" />
+                            Simulate Result (Demo)
+                        </button>
+                    </div>
+                )}
 
                 {/* Loading State */}
                 {isLoading && (
@@ -399,8 +457,15 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
                 )}
 
                 {/* Results Container */}
-                {showResults && (
+                {showResults && !isLoading && (
                     <div id="results-container" ref={resultsRef} className="mt-12 space-y-8">
+
+                        {isSimulating && (
+                            <div className="w-full bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 mb-4">
+                                <Warning weight="fill" />
+                                <span>DEMO MODE: Displaying simulated results because the live API is unavailable.</span>
+                            </div>
+                        )}
 
                         {/* Step 1: Analysis (Questioner Result) */}
                         <div className="clean-card bg-white rounded-2xl p-8 border-l-4 border-brand-500 animate-fade-in">

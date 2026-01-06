@@ -5,12 +5,13 @@ export default function Footer() {
     return (
         <footer className="bg-white border-t border-slate-200 py-12 relative z-10">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-6">
-                <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded bg-slate-900 flex items-center justify-center text-white font-bold text-xs">P</div>
-                    <span className="font-display font-bold text-slate-900">Prompting Co.</span>
-                </div>
+                <span className="font-display font-medium text-xl tracking-tight text-slate-900 flex items-center">
+                    c
+                    <span className="w-6 h-3 border-[2px] border-slate-900 rounded-full inline-block mx-0.5 translate-y-[0.5px]"></span>
+                    ar.ai
+                </span>
                 <div className="text-slate-500 text-sm">
-                    &copy; 2025 The Prompting Co. All rights reserved.
+                    &copy; 2025 COAR. All rights reserved.
                 </div>
                 <div className="flex gap-6">
                     <a href="#" className="text-slate-400 hover:text-slate-900 transition-colors transform hover:scale-110">

@@ -1,278 +1,448 @@
-import React, { useState } from 'react';
-import { generateDriftPrompts, promptRunner, analyzeMentions, compareRuns } from '../../lib/drift-monitor/logic';
-import { Play, Repeat, ArrowRight, Warning, CheckCircle, Question, TrendUp, TrendDown, Minus } from '@phosphor-icons/react';
+import React, { useState, useRef } from 'react';
+import {
+    Wind, Play, ArrowsClockwise, CheckCircle, Warning, XCircle,
+    TrendUp, TrendDown, Minus, Lightning, Target
+} from '@phosphor-icons/react';
+import { resilientGeminiCall } from '../../lib/gemini';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// --- UTILITIES ---
+
+const DEFAULT_PROMPTS = (brand, industry) => [
+    `What are the top brands in the ${industry} space?`,
+    `Who is the best ${industry} provider for small businesses?`,
+    `Compare the pros and cons of ${brand} vs competitors.`,
+    `What are the most popular ${industry} solutions in 2025?`,
+    `Which ${industry} brand has the best customer support?`
+];
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function DriftDashboard({ apiKey, onRequireApiKey }) {
-    // Config State
+    // --- STATE ---
     const [config, setConfig] = useState({
-        brandName: '',
+        brand: '',
         industry: '',
-        competitors: ''
+        competitors: '',
+        prompts: []
     });
+    const [step, setStep] = useState(1);
+    const [isConfiguring, setIsConfiguring] = useState(true);
 
-    // Phase State
-    const [phase, setPhase] = useState('CONFIG'); // CONFIG, RUNNING_BASELINE, ANALYZING_BASELINE, BASELINE_DONE, RUNNING_COMPARISON, ANALYZING_COMPARISON, COMPARISON_DONE
-    const [progress, setProgress] = useState({ current: 0, total: 0, message: '' });
+    const [baselineScan, setBaselineScan] = useState(null);
+    const [comparisonScan, setComparisonScan] = useState(null);
+    const [driftResults, setDriftResults] = useState(null);
+    const [viewRaw, setViewRaw] = useState(null); // Content to show in modal
 
-    // Data State
-    const [prompts, setPrompts] = useState([]);
-    const [baselineResults, setBaselineResults] = useState([]);
-    const [comparisonResults, setComparisonResults] = useState([]);
-    const [driftReport, setDriftReport] = useState([]);
+    const [currentProgress, setCurrentProgress] = useState({ current: 0, total: 0, status: '' });
+    const abortControllerRef = useRef(null);
 
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setConfig(prev => ({ ...prev, [name]: value }));
-    };
+    // --- LOGIC: ANALYZE HELPERS ---
+    const extractSignals = (text, brand, competitors) => {
+        const lowerText = text.toLowerCase();
+        const lowerBrand = brand.toLowerCase();
 
-    const startBaseline = async () => {
-        if (!apiKey) { onRequireApiKey(); return; }
-        if (!config.brandName || !config.industry) { alert("Brand Name and Industry are required."); return; }
+        // 1. Presence
+        const hasBrand = lowerText.includes(lowerBrand);
 
-        // 1. Generate Prompts
-        const generatedPrompts = generateDriftPrompts({
-            brandName: config.brandName,
-            industry: config.industry,
-            category: config.industry, // Simplified mapping
-            competitors: config.competitors.split(',').map(s => s.trim()).filter(Boolean)
-        });
-        setPrompts(generatedPrompts);
-
-        // 2. Run Baseline
-        setPhase('RUNNING_BASELINE');
-        setProgress({ current: 0, total: generatedPrompts.length, message: 'Fetching AI Responses...' });
-
-        const rawResults = await promptRunner(generatedPrompts, apiKey, (c, t) => {
-            setProgress({ current: c, total: t, message: `Running Prompt ${c}/${t}` });
-        });
-
-        // 3. Analyze Baseline
-        setPhase('ANALYZING_BASELINE');
-        setProgress({ current: 0, total: generatedPrompts.length, message: 'Analyzing Mentions...' });
-
-        const competitorsList = config.competitors.split(',').map(s => s.trim()).filter(B => B);
-        const analyzedResults = await analyzeMentions(rawResults, apiKey, config.brandName, competitorsList, (c, t) => {
-            setProgress({ current: c, total: t, message: `Analyzing ${c}/${t}` });
-        });
-
-        setBaselineResults(analyzedResults);
-        setPhase('BASELINE_DONE');
-    };
-
-    const runComparison = async () => {
-        // 1. Run Comparison (Same Prompts)
-        setPhase('RUNNING_COMPARISON');
-        setProgress({ current: 0, total: prompts.length, message: 'Fetching Comparison Responses...' });
-
-        const rawResults = await promptRunner(prompts, apiKey, (c, t) => {
-            setProgress({ current: c, total: t, message: `Running Prompt ${c}/${t}` });
-        });
-
-        // 2. Analyze Comparison
-        setPhase('ANALYZING_COMPARISON');
-        setProgress({ current: 0, total: prompts.length, message: 'Analyzing Comparison...' });
-
-        const competitorsList = config.competitors.split(',').map(s => s.trim()).filter(B => B);
-        const analyzedResults = await analyzeMentions(rawResults, apiKey, config.brandName, competitorsList, (c, t) => {
-            setProgress({ current: c, total: t, message: `Analyzing ${c}/${t}` });
-        });
-
-        setComparisonResults(analyzedResults);
-
-        // 3. Compute Drift
-        const report = compareRuns(baselineResults, analyzedResults);
-        setDriftReport(report);
-        setPhase('COMPARISON_DONE');
-    };
-
-    const reset = () => {
-        if (confirm("This will clear all in-memory results. Are you sure?")) {
-            setPhase('CONFIG');
-            setBaselineResults([]);
-            setComparisonResults([]);
-            setDriftReport([]);
-            setPrompts([]);
+        // 2. Position/Ranking (Heuristic)
+        // If brand appears in first 20% of text or first 2 sentences, high score.
+        let positionScore = 0;
+        if (hasBrand) {
+            const index = lowerText.indexOf(lowerBrand);
+            if (index < 50) positionScore = 10;
+            else if (index < 200) positionScore = 8;
+            else if (index < 500) positionScore = 5;
+            else positionScore = 3;
         }
+
+        // 3. Competitors Found
+        const competitorsFound = competitors.split(',').map(c => c.trim()).filter(c => c && lowerText.includes(c.toLowerCase()));
+
+        // 4. Sentiment (Simple keyword heuristic for MVP)
+        let sentiment = 'neutral';
+        if (hasBrand) {
+            const contextWindow = text.substring(Math.max(0, lowerText.indexOf(lowerBrand) - 50), Math.min(text.length, lowerText.indexOf(lowerBrand) + 150)).toLowerCase();
+            if (contextWindow.includes('best') || contextWindow.includes('top') || contextWindow.includes('excellent') || contextWindow.includes('leader')) sentiment = 'positive';
+            if (contextWindow.includes('bad') || contextWindow.includes('avoid') || contextWindow.includes('slow') || contextWindow.includes('expensive')) sentiment = 'negative';
+        }
+
+        return { hasBrand, positionScore, competitorsFound, sentiment, rawText: text };
+    };
+
+    const runPrompts = async (promptsToRun, brand, competitors) => {
+        const results = [];
+        let completed = 0;
+        setCurrentProgress({ current: 0, total: promptsToRun.length, status: 'Starting scan...' });
+
+        for (const prompt of promptsToRun) {
+            if (abortControllerRef.current?.signal.aborted) break;
+
+            setCurrentProgress({ current: completed + 1, total: promptsToRun.length, status: 'Running prompt...' });
+
+            try {
+                // Rate limit handling (naive)
+                if (completed > 0) await sleep(800);
+
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }]
+                };
+
+                const response = await resilientGeminiCall(apiKey, payload);
+                const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "No response text";
+
+                const signals = extractSignals(text, brand, competitors);
+                results.push({ prompt, ...signals, model: response.usedModel || 'Unknown' });
+
+            } catch (error) {
+                console.error("Prompt failed:", error);
+                results.push({
+                    prompt,
+                    hasBrand: false,
+                    positionScore: 0,
+                    competitorsFound: [],
+                    sentiment: 'error',
+                    rawText: error.message || "API Error"
+                });
+            }
+            completed++;
+        }
+        return results;
+    };
+
+    // --- HANDLERS ---
+    const handleStartBaseline = async () => {
+        if (!config.brand || !config.industry) return alert("Please enter brand and industry");
+        if (!apiKey) return onRequireApiKey();
+
+        setIsConfiguring(false);
+        setStep(2); // Loading State
+
+        // Generate Prompts if empty
+        const effectivePrompts = config.prompts.length > 0 ? config.prompts : DEFAULT_PROMPTS(config.brand, config.industry);
+        setConfig(prev => ({ ...prev, prompts: effectivePrompts }));
+
+        abortControllerRef.current = new AbortController();
+        const results = await runPrompts(effectivePrompts, config.brand, config.competitors);
+
+        setBaselineScan(results);
+        setStep(3); // Baseline Done
+    };
+
+    const handleRunComparison = async () => {
+        if (!baselineScan) return;
+        setStep(4); // Loading Comparison
+
+        abortControllerRef.current = new AbortController();
+        const results = await runPrompts(config.prompts, config.brand, config.competitors);
+
+        setComparisonScan(results);
+
+        // Analyze Drift
+        const drift = compareScans(baselineScan, results);
+        setDriftResults(drift);
+        setStep(5); // Results
+    };
+
+    const handleReset = () => {
+        setStep(1);
+        setIsConfiguring(true);
+        setBaselineScan(null);
+        setComparisonScan(null);
+        setDriftResults(null);
+    };
+
+    // --- RENDER HELPERS ---
+    const StatusBadge = ({ status, icon }) => {
+        const colors = {
+            'STABLE': 'bg-slate-100 text-slate-600',
+            'INVISIBLE': 'bg-slate-200 text-slate-500', // Greyed out
+            'ERROR': 'bg-red-50 text-red-600',
+            'GAINED': 'bg-green-100 text-green-700',
+            'IMPROVED': 'bg-green-100 text-green-700',
+            'SENTIMENT+': 'bg-green-100 text-green-700',
+            'LOST': 'bg-red-100 text-red-700',
+            'DROPPED': 'bg-amber-100 text-amber-700',
+            'CRASH': 'bg-red-100 text-red-700',
+            'REPLACED': 'bg-red-100 text-red-700',
+            'COMPETITION': 'bg-yellow-100 text-yellow-800',
+        };
+
+        const IconMap = {
+            'neutral': Minus,
+            'gain': TrendUp,
+            'loss': TrendDown,
+            'warning': Warning
+        };
+
+        const IconComp = IconMap[icon] || Minus;
+        const colorClass = colors[status] || colors['STABLE'];
+
+        return (
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${colorClass}`}>
+                <IconComp weight="bold" />
+                {status}
+            </span>
+        );
+    };
+
+    const ResultCell = ({ data }) => {
+        const isError = data.sentiment === 'error';
+        const notFound = !data.hasBrand && !isError;
+
+        return (
+            <div className="flex flex-col items-start gap-1">
+                {isError ? (
+                    <span className="text-red-500 text-sm flex items-center gap-1 font-bold">
+                        <Warning size={14} weight="fill" /> API Error
+                    </span>
+                ) : notFound ? (
+                    <span className="text-slate-400 text-sm flex items-center gap-1">
+                        <XCircle size={14} /> Not Found
+                    </span>
+                ) : (
+                    <div className="text-sm">
+                        <span className="text-green-700 font-bold flex items-center gap-1">
+                            <CheckCircle size={14} weight="fill" /> Found
+                        </span>
+                        <span className="text-xs text-slate-500 block">
+                            Pos Score: {data.positionScore}
+                        </span>
+                        <span className="text-xs text-slate-500 block capitalize">
+                            Sent: {data.sentiment}
+                        </span>
+                    </div>
+                )}
+                <button
+                    onClick={() => setViewRaw({ prompt: data.prompt, text: data.rawText })}
+                    className="text-[10px] uppercase font-bold text-slate-400 hover:text-indigo-600 tracking-wider flex items-center gap-1 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 transition-colors"
+                >
+                    View Output
+                </button>
+            </div>
+        );
     };
 
     return (
-        <div className="max-w-7xl mx-auto px-4 py-12">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
+
+            {/* RAW DATA MODAL */}
+            <AnimatePresence>
+                {viewRaw && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                            onClick={() => setViewRaw(null)}
+                        />
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col relative z-50"
+                        >
+                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                                <h3 className="font-bold text-slate-900 truncate pr-4">Response: {viewRaw.prompt}</h3>
+                                <button onClick={() => setViewRaw(null)} className="p-1 hover:bg-slate-200 rounded-full transition-colors"><XCircle size={24} /></button>
+                            </div>
+                            <div className="p-6 overflow-y-auto font-mono text-sm text-slate-600 whitespace-pre-wrap">
+                                <div className="mb-4 text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                    Generated by: {viewRaw.model || 'Unknown Model'}
+                                </div>
+                                {viewRaw.text}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             {/* Header */}
-            <div className="flex justify-between items-center mb-10">
+            <div className="mb-8 flex justify-between items-end">
                 <div>
-                    <h1 className="text-3xl font-display font-bold text-slate-900">Prompt Drift <span className="text-violet-600">Monitor</span></h1>
-                    <p className="text-slate-500 mt-2">Ephemeral session to detect AI response drift. No data is stored.</p>
+                    <h1 className="text-3xl font-display font-bold text-slate-900 flex items-center gap-3">
+                        <Wind className="text-indigo-500" weight="fill" />
+                        Prompt Drift Monitor
+                    </h1>
+                    <p className="text-slate-500 mt-2 max-w-2xl">
+                        Detect stability issues in your brand's AI visibility. Run session-based comparison scans to see if your ranking flips, drops, or drifts over time.
+                    </p>
                 </div>
-                <div className="flex gap-2">
-                    {phase !== 'CONFIG' && (
-                        <button onClick={reset} className="px-4 py-2 text-sm text-slate-500 hover:text-red-600 border border-slate-200 rounded-lg hover:bg-red-50 transition-colors">
-                            Reset Session
-                        </button>
-                    )}
-                </div>
+                {step > 1 && (
+                    <button onClick={handleReset} className="text-sm font-medium text-slate-500 hover:text-slate-800 hover:underline">
+                        Start New Session
+                    </button>
+                )}
             </div>
 
-            {/* Config Phase */}
-            {phase === 'CONFIG' && (
-                <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl shadow-indigo-900/5 border border-slate-200 p-8">
-                    <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-                        <Warning size={24} className="text-orange-500" /> Session Setup
-                    </h2>
-                    <div className="space-y-4">
+            {/* Config Panel */}
+            {isConfiguring && (
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm"
+                >
+                    <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
+                        <Target className="text-indigo-500" size={24} />
+                        Session Configuration
+                    </h3>
+
+                    <div className="grid md:grid-cols-2 gap-6 mb-6">
                         <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-1">Brand Name</label>
-                            <input name="brandName" value={config.brandName} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:ring-2 focus:ring-violet-500" placeholder="e.g. Acme Corp" />
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">My Brand Name</label>
+                            <input
+                                type="text"
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                placeholder="e.g. Acme Corp"
+                                value={config.brand}
+                                onChange={e => setConfig({ ...config, brand: e.target.value })}
+                            />
                         </div>
                         <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-1">Industry / Topic</label>
-                            <input name="industry" value={config.industry} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:ring-2 focus:ring-violet-500" placeholder="e.g. Cloud Storage" />
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Industry / Topic</label>
+                            <input
+                                type="text"
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                placeholder="e.g. Email Marketing"
+                                value={config.industry}
+                                onChange={e => setConfig({ ...config, industry: e.target.value })}
+                            />
                         </div>
-                        <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-1">Competitors (Optional, comma separated)</label>
-                            <input name="competitors" value={config.competitors} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:ring-2 focus:ring-violet-500" placeholder="e.g. CompA, CompB" />
-                        </div>
-                        <div className="pt-4">
-                            <button onClick={startBaseline} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-violet-600 transition-all shadow-lg flex items-center justify-center gap-2">
-                                <Play weight="fill" /> Start Baseline Run
-                            </button>
-                            <p className="text-xs text-center text-slate-400 mt-3">Warning: Results will be lost if you refresh.</p>
-                        </div>
+                    </div>
+
+                    <div className="mb-8">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Competitors (Comma separated)</label>
+                        <input
+                            type="text"
+                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                            placeholder="e.g. Mailchimp, HubSpot, SendGrid"
+                            value={config.competitors}
+                            onChange={e => setConfig({ ...config, competitors: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="flex justify-end">
+                        <button
+                            onClick={handleStartBaseline}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-indigo-200 active:scale-95"
+                        >
+                            <Play weight="bold" />
+                            Run Baseline Scan
+                        </button>
+                    </div>
+                </motion.div>
+            )}
+
+            {/* Progress Indicator */}
+            {(step === 2 || step === 4) && (
+                <div className="bg-white rounded-2xl p-12 border border-slate-200 shadow-sm text-center">
+                    <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-500 rounded-full animate-spin mx-auto mb-6"></div>
+                    <h3 className="text-xl font-bold text-slate-900 mb-2">{currentProgress.status}</h3>
+                    <p className="text-slate-500">
+                        Processing prompt {currentProgress.current} of {currentProgress.total}...
+                    </p>
+                    <div className="mt-6 w-64 mx-auto bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div
+                            className="bg-indigo-500 h-full transition-all duration-300"
+                            style={{ width: `${(currentProgress.current / currentProgress.total) * 100}%` }}
+                        />
                     </div>
                 </div>
             )}
 
-            {/* Runner Progress */}
-            {['RUNNING_BASELINE', 'ANALYZING_BASELINE', 'RUNNING_COMPARISON', 'ANALYZING_COMPARISON'].includes(phase) && (
-                <div className="max-w-md mx-auto text-center py-20">
-                    <div className="w-16 h-16 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin mx-auto mb-6"></div>
-                    <h3 className="text-xl font-bold text-slate-900 mb-2">{progress.message}</h3>
-                    <p className="text-slate-500">Processing {progress.current} of {progress.total} prompts...</p>
-                    <div className="w-full bg-slate-100 rounded-full h-2 mt-6 overflow-hidden">
-                        <div className="bg-violet-600 h-full transition-all duration-300" style={{ width: `${(progress.current / Math.max(progress.total, 1)) * 100}%` }}></div>
+            {/* Step 3: Baseline Ready */}
+            {step === 3 && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm text-center"
+                >
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 text-green-600 rounded-full mb-6">
+                        <CheckCircle size={32} weight="fill" />
                     </div>
-                </div>
+                    <h2 className="text-2xl font-bold text-slate-900 mb-2">Baseline Scan Complete</h2>
+                    <p className="text-slate-600 max-w-lg mx-auto mb-8">
+                        We've captured the initial state of your brand across {baselineScan.length} prompts.
+                        Now, run a comparison scan to check for stability or drift.
+                    </p>
+
+                    <button
+                        onClick={handleRunComparison}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-xl font-bold inline-flex items-center gap-3 text-lg transition-all shadow-xl shadow-indigo-200 hover:-translate-y-1 active:scale-95"
+                    >
+                        <ArrowsClockwise weight="bold" size={24} />
+                        Run Comparison Scan
+                    </button>
+                    <p className="mt-4 text-xs text-slate-400">
+                        (This re-runs prompts with a delay to verify stability)
+                    </p>
+                </motion.div>
             )}
 
-            {/* Results Phase */}
-            {(phase === 'BASELINE_DONE' || phase === 'COMPARISON_DONE') && (
-                <div className="space-y-8">
-                    {/* Control Bar */}
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
-                        <div className="flex gap-4 text-sm">
-                            <span className="flex items-center gap-2">
-                                <span className={`w-3 h-3 rounded-full ${phase === 'BASELINE_DONE' ? 'bg-orange-500 animate-pulse' : 'bg-green-500'}`}></span>
-                                {phase === 'BASELINE_DONE' ? 'Baseline Captured' : 'Comparison Complete'}
-                            </span>
-                            <span className="text-slate-400">|</span>
-                            <span>{prompts.length} Prompts Tracked</span>
-                        </div>
+            {/* Step 5: Results Dashboard */}
+            {step === 5 && driftResults && (
+                <div className="space-y-6">
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                        <Warning className="text-amber-600 mt-0.5" size={20} weight="fill" />
                         <div>
+                            <h4 className="font-bold text-amber-900 text-sm">Session Data Only</h4>
+                            <p className="text-amber-800 text-xs mt-1">
+                                These results are generated in real-time and are not saved to a database.
+                                Refreshing the page will lose this comparison data.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                            <h3 className="font-bold text-slate-800">Drift Analysis Results</h3>
                             <button
-                                onClick={runComparison}
-                                disabled={prompts.length === 0}
-                                className="bg-violet-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-violet-700 transition-colors shadow-md flex items-center gap-2"
+                                onClick={handleRunComparison}
+                                className="text-sm font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2"
                             >
-                                <Repeat weight="bold" />
-                                {phase === 'BASELINE_DONE' ? 'Run Comparison Scan' : 'Re-Run Comparison'}
+                                <ArrowsClockwise weight="bold" />
+                                Re-run Details
                             </button>
                         </div>
-                    </div>
 
-                    {/* Table */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-bold">
-                                    <th className="p-4 w-1/3">Prompt</th>
-                                    <th className="p-4">Baseline Result</th>
-                                    <th className="p-4">{phase === 'BASELINE_DONE' ? 'Comparison (Pending)' : 'Comparison Result'}</th>
-                                    <th className="p-4 text-right">Drift Status</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 text-sm">
-                                {prompts.map((prompt, i) => {
-                                    const base = baselineResults.find(r => r.id === prompt.id)?.analysis;
-                                    const comp = comparisonResults.find(r => r.id === prompt.id)?.analysis;
-                                    // Use drift report if available, else placeholders
-                                    const drift = driftReport.find(d => d.id === prompt.id)?.drift;
-
-                                    return (
-                                        <tr key={prompt.id} className="hover:bg-slate-50/50">
-                                            <td className="p-4 font-medium text-slate-700">{prompt.text}</td>
-
-                                            {/* Baseline Cell */}
-                                            <td className="p-4">
-                                                {base ? (
-                                                    <div className="flex flex-col gap-1">
-                                                        <ResultBadge result={base} />
-                                                        <span className="text-xs text-slate-400">Score: {base.prominence_score}/10</span>
-                                                    </div>
-                                                ) : <span className="text-slate-300">...</span>}
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-6 py-4 font-semibold text-slate-500 text-xs uppercase tracking-wider w-1/3">Prompt</th>
+                                        <th className="px-6 py-4 font-semibold text-slate-500 text-xs uppercase tracking-wider">Baseline</th>
+                                        <th className="px-6 py-4 font-semibold text-slate-500 text-xs uppercase tracking-wider">Comparison</th>
+                                        <th className="px-6 py-4 font-semibold text-slate-500 text-xs uppercase tracking-wider">Diff / Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {driftResults.map((res, idx) => (
+                                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="px-6 py-4 align-top">
+                                                <div className="font-medium text-slate-900 text-sm">{res.prompt}</div>
                                             </td>
-
-                                            {/* Comparison Cell */}
-                                            <td className="p-4">
-                                                {phase === 'BASELINE_DONE' ? (
-                                                    <span className="text-slate-300 italic">Waiting to run...</span>
-                                                ) : comp ? (
-                                                    <div className="flex flex-col gap-1">
-                                                        <ResultBadge result={comp} />
-                                                        <span className="text-xs text-slate-400">Score: {comp.prominence_score}/10</span>
-                                                    </div>
-                                                ) : <span className="text-red-400">Error</span>}
+                                            <td className="px-6 py-4 align-top">
+                                                <ResultCell data={res.baseline} />
                                             </td>
-
-                                            {/* Drift Status */}
-                                            <td className="p-4 text-right">
-                                                {phase === 'BASELINE_DONE' ? (
-                                                    <span className="inline-block w-2 h-2 rounded-full bg-slate-200"></span>
-                                                ) : drift ? (
-                                                    <div className="flex flex-col items-end gap-1">
-                                                        <DriftBadge status={drift.status} color={drift.color} />
-                                                        <span className="text-xs text-slate-500">{drift.changeDescription}</span>
-                                                    </div>
-                                                ) : null}
+                                            <td className="px-6 py-4 align-top">
+                                                <ResultCell data={res.comparison} />
+                                            </td>
+                                            <td className="px-6 py-4 align-top">
+                                                <div className="flex flex-col gap-2 items-start">
+                                                    <StatusBadge status={res.status} icon={res.icon} />
+                                                    <ul className="text-xs text-slate-500 list-disc list-inside">
+                                                        {res.details.map((d, i) => (
+                                                            <li key={i}>{d}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
                                             </td>
                                         </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             )}
+
         </div>
-    );
-}
-
-// Helpers
-function ResultBadge({ result }) {
-    if (!result.mentioned) return <span className="text-slate-400 font-medium">Not Mentioned</span>;
-    return (
-        <span className="flex items-center gap-1.5 font-bold text-slate-800">
-            <CheckCircle className="text-emerald-500" weight="fill" />
-            Mentioned ({result.position || 'Listed'})
-        </span>
-    );
-}
-
-function DriftBadge({ status, color }) {
-    const colors = {
-        green: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-        red: 'bg-red-100 text-red-700 border-red-200',
-        orange: 'bg-amber-100 text-amber-700 border-amber-200',
-        gray: 'bg-slate-100 text-slate-600 border-slate-200',
-    };
-
-    let Icon = Minus;
-    if (status === 'GAINED') Icon = TrendUp;
-    if (status === 'LOST') Icon = TrendDown;
-    if (status === 'SHIFTED') Icon = Warning;
-
-    return (
-        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${colors[color] || colors.gray}`}>
-            <Icon weight="bold" /> {status}
-        </span>
     );
 }

@@ -1,8 +1,7 @@
 const MODELS = [
-    "gemini-2.5-flash",
-    "gemini-1.5-flash",
-    "gemini-2.0-flash-exp",
-    "gemini-1.5-pro"
+    "gemini-1.5-flash",     // STANDARD - Stable & Fast
+    "gemini-2.0-flash-exp", // EXPERIMENTAL - Fastest but volatile
+    "gemini-1.5-pro"        // FALLBACK - High quality, slower
 ];
 
 export const resilientGeminiCall = async (apiKey, payload, modelIndex = 0, retryWithoutTools = false) => {
@@ -36,6 +35,14 @@ export const resilientGeminiCall = async (apiKey, payload, modelIndex = 0, retry
             return resilientGeminiCall(apiKey, payload, modelIndex + 1, retryWithoutTools);
         }
 
+        if (response.status === 403 || response.status === 400) {
+            const errorBody = await response.json().catch(() => ({}));
+            const msg = errorBody.error?.message || "";
+            if (msg.includes("API key") || response.status === 403) {
+                throw new Error("API_KEY_INVALID");
+            }
+        }
+
         if (!response.ok) {
             const errorBody = await response.json().catch(() => ({}));
             const errorMessage = errorBody.error?.message || 'Unknown error';
@@ -53,7 +60,7 @@ export const resilientGeminiCall = async (apiKey, payload, modelIndex = 0, retry
         }
 
         console.log(`[Gemini] Success with ${model}`);
-        return data;
+        return { ...data, usedModel: model };
 
     } catch (error) {
         console.error(`[Gemini] Failed with ${model}:`, error);
