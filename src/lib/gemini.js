@@ -13,7 +13,7 @@ export const resilientGeminiCall = async (apiKey, payload, modelIndex = 0, retry
             delete newPayload.tools; // Remove search requirement
             return resilientGeminiCall(apiKey, newPayload, 0, true);
         }
-        throw new Error("All Gemini models failed or quota exceeded.");
+        throw new Error("All models failed. Please check: 1) Your API Key usage limit 2) Google Search availability in your region.");
     }
 
     const model = MODELS[modelIndex];
@@ -39,7 +39,8 @@ export const resilientGeminiCall = async (apiKey, payload, modelIndex = 0, retry
             const errorBody = await response.json().catch(() => ({}));
             const msg = errorBody.error?.message || "";
             if (msg.includes("API key") || response.status === 403) {
-                throw new Error("API_KEY_INVALID");
+                // If Key is invalid, NO model will work. Fail fast.
+                throw new Error("API Key Invalid or Expired. Please check your Netlify Environment Variables.");
             }
         }
 
@@ -47,9 +48,6 @@ export const resilientGeminiCall = async (apiKey, payload, modelIndex = 0, retry
             const errorBody = await response.json().catch(() => ({}));
             const errorMessage = errorBody.error?.message || 'Unknown error';
             console.error(`[Gemini] Error (${model}): ${response.status} - ${errorMessage}`);
-
-            // If the error explicitly mentions "tools not supported" or similar, we should probably fail fast or retry next
-            // For now, robustly try the next model
             throw new Error(errorMessage);
         }
 
@@ -64,6 +62,17 @@ export const resilientGeminiCall = async (apiKey, payload, modelIndex = 0, retry
 
     } catch (error) {
         console.error(`[Gemini] Failed with ${model}:`, error);
+
+        // If this was the last model, throw the REAL error so the user knows what happened
+        // (unless we haven't tried removing tools yet)
+        if (modelIndex === MODELS.length - 1 && (retryWithoutTools || !payload.tools)) {
+            // Give a useful error message to the user
+            const finalMsg = error.message.includes("429") ? "API Quota Exceeded (Try again later)"
+                : error.message.includes("API Key") ? error.message
+                    : `Analysis Failed: ${error.message}`;
+            throw new Error(finalMsg);
+        }
+
         // Recursively try the next model
         return resilientGeminiCall(apiKey, payload, modelIndex + 1, retryWithoutTools);
     }

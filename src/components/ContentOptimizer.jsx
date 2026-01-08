@@ -54,8 +54,26 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
     }, [currentUser]);
 
     const searchTavily = async (query, key) => {
+        // Try calling the Netlify Function (Backend Proxy) to avoid CORS
+        try {
+            const response = await fetch('/.netlify/functions/tavily', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query })
+            });
+
+            if (response.ok) {
+                return await response.json();
+            }
+            // If function fails (e.g. locally without `netlify login`), fall through to direct call
+            console.warn("Backend proxy failed, trying direct Tavily call (may fail CORS)...");
+        } catch (e) {
+            console.warn("Backend proxy error:", e);
+        }
+
+        // --- Fallback: Direct Call (Likely to fail CORS in Prod, but works if proxy is down locally) ---
         if (!key || key.includes('YOUR_KEY_HERE')) {
-            throw new Error("Missing Tavily API Key. Please add it in src/App.jsx");
+            throw new Error("Missing Tavily API Key. Please add it in Netlify Environment Variables.");
         }
 
         const response = await fetch('https://api.tavily.com/search', {
@@ -76,8 +94,7 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
             throw new Error(`Tavily API error: ${response.statusText}`);
         }
 
-        const result = await response.json();
-        return result;
+        return await response.json();
     };
 
     const analyzeQuestions = async (topic, geminiKey, tavilyKey) => {
