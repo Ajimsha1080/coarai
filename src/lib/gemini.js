@@ -1,7 +1,11 @@
 const MODELS = [
-    "gemini-1.5-flash",     // STANDARD - Stable & Fast
-    "gemini-2.0-flash-exp", // EXPERIMENTAL - Fastest but volatile
-    "gemini-1.5-pro"        // FALLBACK - High quality, slower
+    "gemini-2.0-flash-exp",   // EXPERIMENTAL - Often fastest
+    "gemini-1.5-flash",       // Standard Alias
+    "gemini-1.5-flash-001",   // Specific Version (Fallback for 404s)
+    "gemini-1.5-flash-002",   // Newer Specific Version
+    "gemini-1.5-pro",         // Pro Alias
+    "gemini-1.5-pro-001",     // Pro Specific
+    "gemini-pro"              // Legacy 1.0 Stable (Last Resort)
 ];
 
 export const resilientGeminiCall = async (apiKey, payload, modelIndex = 0, retryWithoutTools = false) => {
@@ -32,6 +36,12 @@ export const resilientGeminiCall = async (apiKey, payload, modelIndex = 0, retry
         // Specific handling for 429 (Quota) and 503 (Overloaded)
         if (response.status === 429 || response.status === 503) {
             console.warn(`[Gemini] ${model} hit status ${response.status}. Switching...`);
+            return resilientGeminiCall(apiKey, payload, modelIndex + 1, retryWithoutTools);
+        }
+
+        // 404 means Model Not Found (e.g. alias not valid for this key/region) -> Switch immediately
+        if (response.status === 404) {
+            console.warn(`[Gemini] ${model} returned 404 (Not Found). Switching...`);
             return resilientGeminiCall(apiKey, payload, modelIndex + 1, retryWithoutTools);
         }
 
