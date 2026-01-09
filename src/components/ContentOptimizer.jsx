@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { marked } from 'marked';
-import { MagnifyingGlass, Sparkle, Brain, Copy, Info, Clock, ExternalLink, Warning, Lightning, ArrowCounterClockwise } from '@phosphor-icons/react';
+import { MagnifyingGlass, Sparkle, Brain, Copy, Info, Clock, CaretRight, Warning, Lightning } from '@phosphor-icons/react';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import HistoryDrawer from './HistoryDrawer';
-import { resilientGeminiCall, MODELS } from '../lib/gemini';
+import { resilientGeminiCall } from '../lib/gemini';
 
 export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey, mode = 'full' }) {
     const { currentUser } = useAuth();
@@ -54,26 +54,8 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
     }, [currentUser]);
 
     const searchTavily = async (query, key) => {
-        // 1. Try calling the Netlify Function (Backend Proxy) to avoid CORS
-        try {
-            const response = await fetch('/.netlify/functions/tavily', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query })
-            });
-
-            if (response.ok) {
-                return await response.json();
-            }
-            // If function fails (e.g. locally without `netlify login`), fall through to direct call
-            console.warn("Backend proxy failed, trying direct Tavily call (may fail CORS)...");
-        } catch (e) {
-            console.warn("Backend proxy error:", e);
-        }
-
-        // 2. Fallback: Direct Call (Likely to fail CORS in Prod, but works if proxy is down locally)
         if (!key || key.includes('YOUR_KEY_HERE')) {
-            throw new Error("Missing Tavily API Key. Please add it in Netlify Environment Variables.");
+            throw new Error("Missing Tavily API Key. Please add it in src/App.jsx");
         }
 
         const response = await fetch('https://api.tavily.com/search', {
@@ -94,7 +76,8 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
             throw new Error(`Tavily API error: ${response.statusText}`);
         }
 
-        return await response.json();
+        const result = await response.json();
+        return result;
     };
 
     const analyzeQuestions = async (topic, geminiKey, tavilyKey) => {
@@ -132,7 +115,6 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
         }
 
         // Use Google Search Grounding for Full/Optimizer Mode
-        // FORCING gemini-1.5-flash as requested
         else {
             const systemPrompt = `You are an expert search trend analyst. Your goal is to identify the real, high-intent questions users are asking about a specific topic. Use Google Search to find current data.`;
             const userQuery = `Find the top 5 most frequent and specific questions users are asking about "${topic}". List them clearly.`;
@@ -143,14 +125,11 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
                 tools: [{ googleSearch: {} }] // Enable Google Search Grounding
             };
 
-            // Find index of gemini-1.5-flash to force it
-            const flashIndex = MODELS.indexOf("gemini-1.5-flash");
-            const startingIndex = flashIndex >= 0 ? flashIndex : 0;
-
-            // Call with specific starting index
-            const result = await resilientGeminiCall(geminiKey, payload, startingIndex);
+            const result = await resilientGeminiCall(geminiKey, payload);
             const text = result.candidates[0].content.parts[0].text;
 
+            // Extract grounding metadata from Gemini response if available
+            // Note: v1beta structure for grounding might vary, usually in candidates[0].groundingMetadata
             const groundingMetadata = result.candidates[0].groundingMetadata || { groundingAttributions: [] };
 
             return { text, groundingMetadata };
@@ -166,12 +145,7 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
             systemInstruction: { parts: [{ text: systemPrompt }] },
         };
 
-        // Find index of gemini-1.5-flash to force it
-        const flashIndex = MODELS.indexOf("gemini-1.5-flash");
-        const startingIndex = flashIndex >= 0 ? flashIndex : 0;
-
-        // Call with specific starting index
-        const result = await resilientGeminiCall(key, payload, startingIndex);
+        const result = await resilientGeminiCall(key, payload);
         return result.candidates[0].content.parts[0].text;
     };
 
