@@ -13,7 +13,6 @@ export default function AiMonitorPage({ apiKey }) {
     const [view, setView] = useState('loading'); // 'loading', 'config', 'dashboard'
     const [config, setConfig] = useState(null);
     const [currentRun, setCurrentRun] = useState(null);
-    const [history, setHistory] = useState([]);
     const [isRunning, setIsRunning] = useState(false);
     const [progress, setProgress] = useState(0);
 
@@ -30,7 +29,6 @@ export default function AiMonitorPage({ apiKey }) {
                 const snap = await getDocs(q);
                 if (!snap.empty) {
                     const lastRun = { id: snap.docs[0].id, ...snap.docs[0].data() };
-                    setHistory([lastRun]);
                     setCurrentRun(lastRun);
                     setConfig(lastRun.config);
                     setView('dashboard');
