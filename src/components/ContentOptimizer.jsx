@@ -98,25 +98,26 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
     };
 
     const analyzeQuestions = async (topic, geminiKey, tavilyKey) => {
-        // Use Tavily for Research Mode (Questioner) - PURE TAVILY IMPLEMENTATION (No Gemini)
+        // Use Tavily for Research Mode (Questioner)
         if (mode === 'research') {
-            // We search specifically for "Questions" to get relevant results
             const searchResult = await searchTavily(`common questions people ask about ${topic}`, tavilyKey);
 
-            // Construct valid Markdown directly from Tavily data
-            // Tavily's 'answer' provides a generated summary, which works great as an intro
-            let text = "";
-
+            let context = "";
             if (searchResult.answer) {
-                text += `### AI Summary\n${searchResult.answer}\n\n`;
+                context += `Tavily Summary: ${searchResult.answer}\n\n`;
             }
+            context += "Search Results:\n" + searchResult.results.map(r => `- ${r.title}: ${r.content}`).join("\n");
 
-            text += `### Top Search Results & Insights:\n`;
+            const systemPrompt = `You are a search analyst. Analyze the provided search results to identify the 5 most frequent and relevant user questions about: "${topic}". Structure your response as a numbered list.`;
+            const userQuery = `Search Data:\n${context}\n\nBased ONLY on the above search data, what are the top 5 questions users are asking?`;
 
-            // Format the raw results into a readable list
-            text += searchResult.results.map((r, i) => {
-                return `**${i + 1}. ${r.title}**\n> "${r.content.slice(0, 200)}..."\n[Read more](${r.url})`;
-            }).join('\n\n');
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+
+            const result = await resilientGeminiCall(geminiKey, payload);
+            const text = result.candidates[0].content.parts[0].text;
 
             const groundingMetadata = {
                 groundingAttributions: searchResult.results.map(r => ({
