@@ -131,7 +131,7 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
         }
 
         // Use Google Search Grounding for Full/Optimizer Mode
-        // WITH TAVILY FALLBACK
+        // STRICT GEMINI ONLY (No Tavily Fallback)
         else {
             const systemPrompt = `You are an expert search trend analyst. Your goal is to identify the real, high-intent questions users are asking about a specific topic. Use Google Search to find current data.`;
             const userQuery = `Find the top 5 most frequent and specific questions users are asking about "${topic}". List them clearly.`;
@@ -142,31 +142,14 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
                 tools: [{ googleSearch: {} }] // Enable Google Search Grounding
             };
 
-            try {
-                const result = await resilientGeminiCall(geminiKey, payload);
-                const text = result.candidates[0].content.parts[0].text;
-                // Extract grounding metadata from Gemini response if available
-                const groundingMetadata = result.candidates[0].groundingMetadata || { groundingAttributions: [] };
-                return { text, groundingMetadata };
+            // Direct Call - Will throw error if Gemini fails (e.g. 429/404)
+            const result = await resilientGeminiCall(geminiKey, payload);
+            const text = result.candidates[0].content.parts[0].text;
 
-            } catch (error) {
-                console.warn("Gemini Grounding Failed, falling back to Tavily:", error);
+            // Extract grounding metadata from Gemini response if available
+            const groundingMetadata = result.candidates[0].groundingMetadata || { groundingAttributions: [] };
 
-                // FALLBACK: Use Tavily if Gemini Grounding fails
-                const searchResult = await searchTavily(`common questions people ask about ${topic}`, tavilyKey);
-
-                let text = `### ⚠️ Gemini Grounding Unavailable (Using Tavily Backup)\n\n` +
-                    `*Note: Google Search Grounding service failed. Showing Tavily Search results instead.* \n\n` +
-                    `### Top Search Results:\n` +
-                    searchResult.results.map((r, i) => `**${i + 1}. ${r.title}**\n> "${r.content.slice(0, 150)}..."`).join('\n\n');
-
-                const groundingMetadata = {
-                    groundingAttributions: searchResult.results.map(r => ({
-                        web: { uri: r.url, title: r.title }
-                    }))
-                };
-                return { text, groundingMetadata };
-            }
+            return { text, groundingMetadata };
         }
     };
 
@@ -179,15 +162,9 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
             systemInstruction: { parts: [{ text: systemPrompt }] },
         };
 
-        try {
-            // Standard Call
-            const result = await resilientGeminiCall(key, payload);
-            return result.candidates[0].content.parts[0].text;
-        } catch (error) {
-            console.warn("Gemini Content Generation Failed:", error);
-            // Fallback Text if Generation fails
-            return `### AI Generation Unavailable\n\nWe successfully gathered the research data (Step 1), but the AI Content Generation service is currently experiencing high load or quota limits.\n\n**Please use the Research Data above to draft your content.**`;
-        }
+        // Direct Call - Will throw error if Gemini fails
+        const result = await resilientGeminiCall(key, payload);
+        return result.candidates[0].content.parts[0].text;
     };
 
     const saveToHistory = async (topic, questionsAnalysis, optimizedMarkdown, sources) => {
