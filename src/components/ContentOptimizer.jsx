@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import HistoryDrawer from './HistoryDrawer';
-import { resilientGeminiCall } from '../lib/gemini';
+import { resilientGeminiCall, MODELS } from '../lib/gemini';
 
 export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey, mode = 'full' }) {
     const { currentUser } = useAuth();
@@ -132,7 +132,7 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
         }
 
         // Use Google Search Grounding for Full/Optimizer Mode
-        // STRICT GEMINI ONLY (No Tavily Fallback)
+        // FORCING gemini-1.5-flash as requested
         else {
             const systemPrompt = `You are an expert search trend analyst. Your goal is to identify the real, high-intent questions users are asking about a specific topic. Use Google Search to find current data.`;
             const userQuery = `Find the top 5 most frequent and specific questions users are asking about "${topic}". List them clearly.`;
@@ -143,11 +143,14 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
                 tools: [{ googleSearch: {} }] // Enable Google Search Grounding
             };
 
-            // Direct Call - Will throw error if Gemini fails (e.g. 429/404)
-            const result = await resilientGeminiCall(geminiKey, payload);
+            // Find index of gemini-1.5-flash to force it
+            const flashIndex = MODELS.indexOf("gemini-1.5-flash");
+            const startingIndex = flashIndex >= 0 ? flashIndex : 0;
+
+            // Call with specific starting index
+            const result = await resilientGeminiCall(geminiKey, payload, startingIndex);
             const text = result.candidates[0].content.parts[0].text;
 
-            // Extract grounding metadata from Gemini response if available
             const groundingMetadata = result.candidates[0].groundingMetadata || { groundingAttributions: [] };
 
             return { text, groundingMetadata };
@@ -163,8 +166,12 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
             systemInstruction: { parts: [{ text: systemPrompt }] },
         };
 
-        // Direct Call - Will throw error if Gemini fails
-        const result = await resilientGeminiCall(key, payload);
+        // Find index of gemini-1.5-flash to force it
+        const flashIndex = MODELS.indexOf("gemini-1.5-flash");
+        const startingIndex = flashIndex >= 0 ? flashIndex : 0;
+
+        // Call with specific starting index
+        const result = await resilientGeminiCall(key, payload, startingIndex);
         return result.candidates[0].content.parts[0].text;
     };
 

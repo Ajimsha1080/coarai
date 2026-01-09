@@ -1,4 +1,4 @@
-const MODELS = [
+export const MODELS = [
     "gemini-2.0-flash-exp",   // USER PRIORITY - Newest/Best available
     "gemini-1.5-pro",         // High IQ Fallback
     "gemini-1.5-flash-8b",    // Speed Fallback
@@ -34,15 +34,20 @@ export const resilientGeminiCall = async (apiKey, payload, modelIndex = 0, retry
             body: JSON.stringify(payload)
         });
 
-        // Specific handling for 429 (Quota)
+        // Specific handling for 429 (Quota/Rate Limit)
         if (response.status === 429) {
-            if (retries < 2) { // Logic: Retry twice, then move on
-                const waitTime = (retries + 1) * 2500; // 2.5s, 5s - Be more patient for 2.0
-                console.warn(`[Gemini] ${model} hit rate limit (429). Waiting ${waitTime}ms...`);
+            // CRITICAL FIX: Since other models are returning 404, we CANNOT switch.
+            // We must be "sticky" and wait for this model to free up.
+            // Retry up to 10 times (approx 30-40 seconds max wait)
+            if (retries < 10) {
+                const waitTime = 3000 + (retries * 1000); // 3s, 4s, 5s...
+                console.warn(`[Gemini] ${model} is busy (429). Staying on this model. Waiting ${waitTime}ms... (Attempt ${retries + 1}/10)`);
                 await new Promise(resolve => setTimeout(resolve, waitTime));
                 return resilientGeminiCall(apiKey, payload, modelIndex, retryWithoutTools, retries + 1);
             }
-            console.warn(`[Gemini] ${model} exhausted retries. Switching...`);
+
+            // Only if we truly time out do we give up
+            console.warn(`[Gemini] ${model} exhausted ALL retries (Still 429). Switching as last resort...`);
             return resilientGeminiCall(apiKey, payload, modelIndex + 1, retryWithoutTools, 0);
         }
 
