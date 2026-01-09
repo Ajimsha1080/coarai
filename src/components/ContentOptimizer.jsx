@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { marked } from 'marked';
-import { MagnifyingGlass, Sparkle, Brain, Copy, Info, Clock, CaretRight, Warning, Lightning } from '@phosphor-icons/react';
+import { MagnifyingGlass, Sparkle, Brain, Copy, Info, Clock, ExternalLink, Warning, Lightning, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
@@ -54,7 +54,7 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
     }, [currentUser]);
 
     const searchTavily = async (query, key) => {
-        // Try calling the Netlify Function (Backend Proxy) to avoid CORS
+        // 1. Try calling the Netlify Function (Backend Proxy) to avoid CORS
         try {
             const response = await fetch('/.netlify/functions/tavily', {
                 method: 'POST',
@@ -71,7 +71,7 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
             console.warn("Backend proxy error:", e);
         }
 
-        // --- Fallback: Direct Call (Likely to fail CORS in Prod, but works if proxy is down locally) ---
+        // 2. Fallback: Direct Call (Likely to fail CORS in Prod, but works if proxy is down locally)
         if (!key || key.includes('YOUR_KEY_HERE')) {
             throw new Error("Missing Tavily API Key. Please add it in Netlify Environment Variables.");
         }
@@ -98,26 +98,25 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
     };
 
     const analyzeQuestions = async (topic, geminiKey, tavilyKey) => {
-        // Use Tavily for Research Mode (Questioner)
+        // Use Tavily for Research Mode (Questioner) - PURE TAVILY IMPLEMENTATION (No Gemini)
         if (mode === 'research') {
+            // We search specifically for "Questions" to get relevant results
             const searchResult = await searchTavily(`common questions people ask about ${topic}`, tavilyKey);
 
-            let context = "";
+            // Construct valid Markdown directly from Tavily data
+            // Tavily's 'answer' provides a generated summary, which works great as an intro
+            let text = "";
+
             if (searchResult.answer) {
-                context += `Tavily Summary: ${searchResult.answer}\n\n`;
+                text += `### AI Summary\n${searchResult.answer}\n\n`;
             }
-            context += "Search Results:\n" + searchResult.results.map(r => `- ${r.title}: ${r.content}`).join("\n");
 
-            const systemPrompt = `You are a search analyst. Analyze the provided search results to identify the 5 most frequent and relevant user questions about: "${topic}". Structure your response as a numbered list.`;
-            const userQuery = `Search Data:\n${context}\n\nBased ONLY on the above search data, what are the top 5 questions users are asking?`;
+            text += `### Top Search Results & Insights:\n`;
 
-            const payload = {
-                contents: [{ parts: [{ text: userQuery }] }],
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-            };
-
-            const result = await resilientGeminiCall(geminiKey, payload);
-            const text = result.candidates[0].content.parts[0].text;
+            // Format the raw results into a readable list
+            text += searchResult.results.map((r, i) => {
+                return `**${i + 1}. ${r.title}**\n> "${r.content.slice(0, 200)}..."\n[Read more](${r.url})`;
+            }).join('\n\n');
 
             const groundingMetadata = {
                 groundingAttributions: searchResult.results.map(r => ({
@@ -132,6 +131,7 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
         }
 
         // Use Google Search Grounding for Full/Optimizer Mode
+        // WITH TAVILY FALLBACK
         else {
             const systemPrompt = `You are an expert search trend analyst. Your goal is to identify the real, high-intent questions users are asking about a specific topic. Use Google Search to find current data.`;
             const userQuery = `Find the top 5 most frequent and specific questions users are asking about "${topic}". List them clearly.`;
@@ -142,14 +142,31 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
                 tools: [{ googleSearch: {} }] // Enable Google Search Grounding
             };
 
-            const result = await resilientGeminiCall(geminiKey, payload);
-            const text = result.candidates[0].content.parts[0].text;
+            try {
+                const result = await resilientGeminiCall(geminiKey, payload);
+                const text = result.candidates[0].content.parts[0].text;
+                // Extract grounding metadata from Gemini response if available
+                const groundingMetadata = result.candidates[0].groundingMetadata || { groundingAttributions: [] };
+                return { text, groundingMetadata };
 
-            // Extract grounding metadata from Gemini response if available
-            // Note: v1beta structure for grounding might vary, usually in candidates[0].groundingMetadata
-            const groundingMetadata = result.candidates[0].groundingMetadata || { groundingAttributions: [] };
+            } catch (error) {
+                console.warn("Gemini Grounding Failed, falling back to Tavily:", error);
 
-            return { text, groundingMetadata };
+                // FALLBACK: Use Tavily if Gemini Grounding fails
+                const searchResult = await searchTavily(`common questions people ask about ${topic}`, tavilyKey);
+
+                let text = `### ⚠️ Gemini Grounding Unavailable (Using Tavily Backup)\n\n` +
+                    `*Note: Google Search Grounding service failed. Showing Tavily Search results instead.* \n\n` +
+                    `### Top Search Results:\n` +
+                    searchResult.results.map((r, i) => `**${i + 1}. ${r.title}**\n> "${r.content.slice(0, 150)}..."`).join('\n\n');
+
+                const groundingMetadata = {
+                    groundingAttributions: searchResult.results.map(r => ({
+                        web: { uri: r.url, title: r.title }
+                    }))
+                };
+                return { text, groundingMetadata };
+            }
         }
     };
 
@@ -162,8 +179,15 @@ export default function ContentOptimizer({ apiKey, tavilyApiKey, onRequireApiKey
             systemInstruction: { parts: [{ text: systemPrompt }] },
         };
 
-        const result = await resilientGeminiCall(key, payload);
-        return result.candidates[0].content.parts[0].text;
+        try {
+            // Standard Call
+            const result = await resilientGeminiCall(key, payload);
+            return result.candidates[0].content.parts[0].text;
+        } catch (error) {
+            console.warn("Gemini Content Generation Failed:", error);
+            // Fallback Text if Generation fails
+            return `### AI Generation Unavailable\n\nWe successfully gathered the research data (Step 1), but the AI Content Generation service is currently experiencing high load or quota limits.\n\n**Please use the Research Data above to draft your content.**`;
+        }
     };
 
     const saveToHistory = async (topic, questionsAnalysis, optimizedMarkdown, sources) => {
