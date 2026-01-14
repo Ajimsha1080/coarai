@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import {
     Quotes, Trophy, Target, Warning, Lightning, CheckCircle,
     TrendUp, Bug, ArrowRight, BookOpen, ShieldCheck, XCircle, Minus,
-    Robot, Cpu, Globe
+    Robot, Cpu, Globe, Plus, Trash
 } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { resilientGeminiCall } from '../../lib/gemini';
 import { analyzeCitationWithAI, calculateAuthorityScore } from '../../lib/citationEngine';
+import PromptResultRow from './PromptResultRow';
 
 const DEFAULT_GEO_PROMPTS = (brand, industry) => [
     `Define ${brand} and its role in ${industry}.`,
@@ -32,12 +33,27 @@ export default function CitationDashboard({ apiKey, onRequireApiKey }) {
     const [config, setConfig] = useState({ brand: '', industry: '', competitors: '' });
     const [selectedModels, setSelectedModels] = useState(['Gemini']);
     const [status, setStatus] = useState('idle'); // idle, running, complete
-    const [results, setResults] = useState({}); // { 'Gemini': [...], 'ChatGPT': [...] }
-    const [scores, setScores] = useState({}); // { 'Gemini': 85, 'ChatGPT': 90 }
+    const [results, setResults] = useState({}); // { 'Gemini': { system: [], custom: [] } }
+    const [scores, setScores] = useState({}); // { 'Gemini': 85 }
     const [activeTab, setActiveTab] = useState('Gemini');
     const [currentPrompt, setCurrentPrompt] = useState("");
     const [currentModel, setCurrentModel] = useState("");
     const [viewRaw, setViewRaw] = useState(null); // Content to show in modal
+
+    // Custom Prompts State
+    const [customPrompts, setCustomPrompts] = useState([]);
+    const [customInput, setCustomInput] = useState("");
+
+    const handleAddCustomPrompt = () => {
+        if (!customInput.trim()) return;
+        if (customPrompts.length >= 3) return alert("Maximum 3 custom prompts allowed.");
+        setCustomPrompts([...customPrompts, customInput.trim()]);
+        setCustomInput("");
+    };
+
+    const handleRemoveCustomPrompt = (index) => {
+        setCustomPrompts(customPrompts.filter((_, i) => i !== index));
+    };
 
     const toggleModel = (modelId) => {
         if (selectedModels.includes(modelId)) {
@@ -57,78 +73,53 @@ export default function CitationDashboard({ apiKey, onRequireApiKey }) {
         setResults({});
         setScores({});
 
-        const prompts = DEFAULT_GEO_PROMPTS(config.brand, config.industry);
+        // 1. Prepare Prompts (Merged Source of Truth)
+        const systemPrompts = DEFAULT_GEO_PROMPTS(config.brand, config.industry).map(text => ({
+            text,
+            type: 'system'
+        }));
+
+        const userPrompts = customPrompts.map(text => ({
+            text,
+            type: 'custom'
+        }));
+
         const competitorsList = config.competitors;
+
+        // Results container
         const allResults = {};
-        const allScores = {};
 
         try {
             for (const modelId of selectedModels) {
                 setCurrentModel(modelId);
-                const modelResults = [];
 
-                for (const prompt of prompts) {
-                    setCurrentPrompt(prompt);
+                // Initialize result buckets
+                const systemResults = [];
+                const customResults = [];
 
-                    // Simulate delay for realism and rate limiting
-                    await new Promise(r => setTimeout(r, 1000));
+                // --- SYSTEM PROMPT PIPELINE ---
+                for (const promptItem of systemPrompts) {
+                    const res = await executePrompt(modelId, promptItem, competitorsList);
+                    systemResults.push(res);
+                }
 
-                    let systemInstruction = "";
-                    let userPrompt = prompt;
-
-                    // Simulation Logic
-                    if (modelId === 'ChatGPT') {
-                        systemInstruction = "You are ChatGPT based on GPT-4. Answer the following user query accurately, mimicking ChatGPT's helpful and direct style. Do not mention you are simulating.";
-                    } else if (modelId === 'Perplexity') {
-                        systemInstruction = "You are Perplexity AI. You MUST provide citations in your response (e.g., [1], [2]). Focus on facts and sources. Respond in the style of Perplexity.";
-                    } else {
-                        // Gemini - default behavior
-                        systemInstruction = "You are a helpful AI assistant.";
-                    }
-
-                    // Construct Payload
-                    // We prepend system instruction to the prompt for simplicity with the current resilientGeminiCall helper
-                    // or use system_instruction if the helper supported it, but text prepending is robust for simulation.
-                    const fullPrompt = `${systemInstruction}\n\nUser Query: ${userPrompt}`;
-
-                    try {
-                        const payload = { contents: [{ parts: [{ text: fullPrompt }] }] };
-                        const response = await resilientGeminiCall(apiKey, payload);
-                        const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "Error: No response";
-
-                        // Analyze the response text
-                        // We pass modelId as the 'platform' so the analysis engine knows what it's looking at
-                        const analysis = await analyzeCitationWithAI(text, config.brand, competitorsList, apiKey, modelId);
-
-                        modelResults.push({
-                            prompt,
-                            text,
-                            analysis,
-                            model: modelId,
-                            realModelUsed: response.usedModel // Keep track of the actual backend model used (Gemini)
-                        });
-                    } catch (err) {
-                        console.error(err);
-                        modelResults.push({
-                            prompt,
-                            text: "Error generating response: " + err.message,
-                            analysis: {
-                                citation_level: 'ERROR',
-                                confidence_score: 0,
-                                recommended_fix: `Error: ${err.message}`,
-                                why_not_cited: "Generation Failed"
-                            },
-                            model: modelId
-                        });
+                // --- CUSTOM PROMPT PIPELINE ---
+                if (userPrompts.length > 0) {
+                    for (const promptItem of userPrompts) {
+                        const res = await executePrompt(modelId, promptItem, competitorsList);
+                        customResults.push(res);
                     }
                 }
 
-                allResults[modelId] = modelResults;
-                allScores[modelId] = calculateAuthorityScore(modelResults);
+                const modelResultsMerged = { system: systemResults, custom: customResults };
+                allResults[modelId] = modelResultsMerged;
+
+                // Score based on ALL results combined for the top card
+                const flatResults = [...systemResults, ...customResults];
+                setScores(prev => ({ ...prev, [modelId]: calculateAuthorityScore(flatResults) }));
 
                 // Update results progressively
-                setResults(prev => ({ ...prev, [modelId]: modelResults }));
-                setScores(prev => ({ ...prev, [modelId]: calculateAuthorityScore(modelResults) }));
+                setResults(prev => ({ ...prev, [modelId]: modelResultsMerged }));
             }
 
             setActiveTab(selectedModels[0]);
@@ -141,11 +132,75 @@ export default function CitationDashboard({ apiKey, onRequireApiKey }) {
         }
     };
 
-    const getTopRecommendation = (modelId) => {
-        const modelResults = results[modelId];
-        if (!modelResults) return null;
+    // Helper to execute a single prompt
+    const executePrompt = async (modelId, promptItem, competitorsList) => {
+        const promptText = promptItem.text;
+        const promptType = promptItem.type;
+        setCurrentPrompt(promptText);
 
-        const badResult = modelResults.find(r => r.analysis.citation_level === 'NO_MENTION' || r.analysis.citation_level === 'MENTION_ONLY' || r.analysis.citation_level === 'ERROR');
+        // Simulate delay for realism and rate limiting
+        await new Promise(r => setTimeout(r, 1000));
+
+        let systemInstruction = "";
+        let userQuery = promptText;
+
+        // Simulation Logic
+        if (modelId === 'ChatGPT') {
+            systemInstruction = "You are ChatGPT based on GPT-4. Answer the following user query accurately, mimicking ChatGPT's helpful and direct style. Do not mention you are simulating.";
+        } else if (modelId === 'Perplexity') {
+            systemInstruction = "You are Perplexity AI. You MUST provide citations in your response (e.g., [1], [2]). Focus on facts and sources. Respond in the style of Perplexity.";
+        } else {
+            systemInstruction = "You are a helpful AI assistant.";
+        }
+
+        const fullPrompt = `${systemInstruction}\n\nUser Query: ${userQuery}`;
+
+        try {
+            const payload = { contents: [{ parts: [{ text: fullPrompt }] }] };
+            const response = await resilientGeminiCall(apiKey, payload);
+            const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "Error: No response";
+
+            const analysis = await analyzeCitationWithAI(
+                text, config.brand, competitorsList, apiKey, modelId, promptType, promptText
+            );
+
+            return {
+                prompt: promptText,
+                prompt_text: promptText,
+                type: promptType,
+                prompt_type: promptType,
+                text,
+                analysis,
+                model: modelId,
+                realModelUsed: response.usedModel || 'Unknown'
+            };
+        } catch (err) {
+            console.error(err);
+            return {
+                prompt: promptText,
+                prompt_text: promptText,
+                type: promptType,
+                prompt_type: promptType,
+                text: "Error generating response: " + err.message,
+                analysis: {
+                    citation_level: 'ERROR',
+                    confidence_score: 0,
+                    recommended_fix: `Error: ${err.message}`,
+                    why_not_cited: "Generation Failed"
+                },
+                model: modelId
+            };
+        }
+    };
+
+    const getTopRecommendation = (modelId) => {
+        const data = results[modelId];
+        if (!data) return null;
+
+        // Search across both pipelines
+        const all = [...(data.system || []), ...(data.custom || [])];
+        const badResult = all.find(r => r.analysis.citation_level === 'NO_MENTION' || r.analysis.citation_level === 'MENTION_ONLY' || r.analysis.citation_level === 'ERROR');
+
         if (badResult && badResult.analysis.recommended_fix) {
             return {
                 type: badResult.analysis.why_not_cited || "Low Authority",
@@ -235,6 +290,43 @@ export default function CitationDashboard({ apiKey, onRequireApiKey }) {
                         />
                     </div>
 
+                    {/* Custom Prompts Section */}
+                    <div className="mb-8">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Custom Prompts (Max 3)</label>
+                        <div className="flex gap-2 mb-2">
+                            <input
+                                className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
+                                placeholder={customPrompts.length >= 3 ? "Limit reached (3/3)" : "Enter a specific question..."}
+                                value={customInput}
+                                onChange={e => setCustomInput(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleAddCustomPrompt()}
+                                disabled={customPrompts.length >= 3}
+                            />
+                            <button
+                                onClick={handleAddCustomPrompt}
+                                disabled={!customInput || customPrompts.length >= 3}
+                                className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                <Plus size={20} />
+                            </button>
+                        </div>
+                        {customPrompts.length > 0 && (
+                            <div className="space-y-2 mt-3">
+                                {customPrompts.map((prompt, idx) => (
+                                    <div key={idx} className="flex items-center justify-between p-3 bg-amber-50 border border-amber-100 rounded-lg text-sm text-slate-700">
+                                        <span className="truncate pr-2">{prompt}</span>
+                                        <button onClick={() => handleRemoveCustomPrompt(idx)} className="text-amber-500 hover:text-red-500">
+                                            <Trash size={16} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        <p className="text-[10px] text-slate-400 mt-2">
+                            Add specific questions your customers might ask to see if you appear.
+                        </p>
+                    </div>
+
                     {/* AI Model Selection */}
                     <div className="mb-8 p-6 bg-slate-50 rounded-xl border border-slate-100">
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-4">
@@ -306,7 +398,6 @@ export default function CitationDashboard({ apiKey, onRequireApiKey }) {
             {/* Results Dashboard */}
             {status === 'complete' && (
                 <div className="animate-fade-in space-y-8">
-
                     {/* Model Tabs */}
                     <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-1">
                         {selectedModels.map(modelId => (
@@ -370,66 +461,61 @@ export default function CitationDashboard({ apiKey, onRequireApiKey }) {
                         </div>
                     </div>
 
-                    {/* Detailed Breakdown */}
-                    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-800">Prompt Analysis Detail: {activeTab}</h3>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold">
-                                    <tr>
-                                        <th className="px-6 py-4 w-1/4">Prompt</th>
-                                        <th className="px-6 py-4">Status</th>
-                                        <th className="px-6 py-4">Evidence & Analysis</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {results[activeTab]?.map((item, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                                            <td className="px-6 py-4 align-top">
-                                                <div className="text-sm font-medium text-slate-900 mb-1">{item.prompt}</div>
-                                                <button
-                                                    onClick={() => setViewRaw(item)}
-                                                    className="text-[10px] uppercase font-bold text-amber-600 hover:text-amber-700 hover:underline tracking-wide bg-amber-50 px-2 py-1 rounded inline-flex items-center gap-1"
-                                                >
-                                                    View Raw Output <ArrowRight size={10} />
-                                                </button>
-                                            </td>
-                                            <td className="px-6 py-4 align-top">
-                                                <div className={`
-                                                    inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold border
-                                                    ${item.analysis.citation_level === 'STRONG_CITATION' ? 'bg-green-50 text-green-700 border-green-200' :
-                                                        item.analysis.citation_level === 'DEFINITION_OWNERSHIP' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                                                            item.analysis.citation_level === 'MENTION_ONLY' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                                                item.analysis.citation_level === 'ERROR' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                                    'bg-slate-100 text-slate-600 border-slate-200'}
-                                                `}>
-                                                    {item.analysis.citation_level?.replace('_', ' ') || 'UNKNOWN'}
-                                                </div>
-                                                <div className="mt-2 text-xs text-slate-400 font-mono">
-                                                    Trust Score: {item.analysis.confidence_score}%
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 align-top text-sm text-slate-600">
-                                                {item.analysis.citation_sentence && (
-                                                    <div className="mb-2 p-2 bg-slate-50 rounded italic border-l-2 border-slate-300">
-                                                        "{item.analysis.citation_sentence}"
-                                                    </div>
-                                                )}
-                                                {item.analysis.why_not_cited && (
-                                                    <div className="text-red-500 text-xs font-medium flex items-center gap-1">
-                                                        <Warning size={12} weight="fill" />
-                                                        {item.analysis.why_not_cited}
-                                                    </div>
-                                                )}
-                                            </td>
+                    {/* custom_results SECTION */}
+                    {results[activeTab]?.custom && results[activeTab].custom.length > 0 && (
+                        <div className="bg-white rounded-2xl border border-indigo-100 overflow-hidden shadow-sm">
+                            <div className="px-6 py-4 border-b border-indigo-100 bg-indigo-50/50 flex justify-between items-center">
+                                <h3 className="font-bold text-indigo-900 flex items-center gap-2">
+                                    <Lightning className="text-indigo-500" weight="fill" />
+                                    Your Custom Prompt Analysis
+                                </h3>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead className="bg-indigo-50/30 text-indigo-400 text-xs uppercase font-semibold">
+                                        <tr>
+                                            <th className="px-6 py-4 w-1/4">Custom Question</th>
+                                            <th className="px-6 py-4">Status</th>
+                                            <th className="px-6 py-4">Evidence & Analysis</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-indigo-50">
+                                        {results[activeTab].custom.map((item, idx) => (
+                                            <PromptResultRow key={idx} item={item} setViewRaw={setViewRaw} type="custom" />
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    {/* system_results SECTION */}
+                    {results[activeTab]?.system && (
+                        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                    <Quotes className="text-slate-400" weight="fill" />
+                                    System Citation Analysis
+                                </h3>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold">
+                                        <tr>
+                                            <th className="px-6 py-4 w-1/4">Prompt</th>
+                                            <th className="px-6 py-4">Status</th>
+                                            <th className="px-6 py-4">Evidence & Analysis</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {results[activeTab].system.map((item, idx) => (
+                                            <PromptResultRow key={idx} item={item} setViewRaw={setViewRaw} type="system" />
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

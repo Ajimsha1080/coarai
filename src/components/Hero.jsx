@@ -2,16 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Meta, Claude, Gemini } from '@lobehub/icons';
 
 // SVG Paths for Real AI Brands
 const LOGOS = [
     {
         name: "Gemini",
-        color: "text-[#4E88FC]", // Google Blue/Gradient
-        path: (
-            // Official Google Gemini Icon Path (Star/Sparkle)
-            <path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81" fill="currentColor" />
-        )
+        component: <Gemini.Color size="100%" />
     },
     {
         name: "ChatGPT",
@@ -28,6 +25,14 @@ const LOGOS = [
             // Official Perplexity Icon Path
             <path d="M22.3977 7.0896h-2.3106V.0676l-7.5094 6.3542V.1577h-1.1554v6.1966L4.4904 0v7.0896H1.6023v10.3976h2.8882V24l6.932-6.3591v6.2005h1.1554v-6.0469l6.9318 6.1807v-6.4879h2.8882V7.0896zm-3.4657-4.531v4.531h-5.355l5.355-4.531zm-13.2862.0676 4.8691 4.4634H5.6458V2.6262zM2.7576 16.332V8.245h7.8476l-6.1149 6.1147v1.9723H2.7576zm2.8882 5.0404v-3.8852h.0001v-2.6488l5.7763-5.7764v7.0111l-5.7764 5.2993zm12.7086.0248-5.7766-5.1509V9.0618l5.7766 5.7766v6.5588zm2.8882-5.0652h-1.733v-1.9723L13.3948 8.245h7.8478v8.087z" fill="currentColor" />
         )
+    },
+    {
+        name: "Meta",
+        component: <Meta.Color size="100%" />
+    },
+    {
+        name: "Claude",
+        component: <Claude.Color size="100%" />
     }
 ];
 
@@ -68,9 +73,15 @@ export default function Hero() {
                                 {/* Double list for seamless loop */}
                                 {[...LOGOS, ...LOGOS].map((logo, i) => (
                                     <div key={i} className="flex-shrink-0 h-[1.1em] w-[1.1em] flex items-center justify-center">
-                                        <svg viewBox="0 0 24 24" className={`w-[70%] h-[70%] ${logo.color} fill-current`}>
-                                            {logo.path}
-                                        </svg>
+                                        {logo.component ? (
+                                            <div className="w-[70%] h-[70%] flex items-center justify-center">
+                                                {logo.component}
+                                            </div>
+                                        ) : (
+                                            <svg viewBox="0 0 24 24" className={`w-[70%] h-[70%] ${logo.color} fill-current`}>
+                                                {logo.path}
+                                            </svg>
+                                        )}
                                     </div>
                                 ))}
                             </motion.div>

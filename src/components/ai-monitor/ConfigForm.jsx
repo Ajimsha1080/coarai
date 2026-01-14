@@ -6,6 +6,7 @@ export default function ConfigForm({ onStart, initialData, isLoading }) {
         brandName: '',
         industry: '',
         category: '', // e.g., CRM
+        productType: 'SaaS',
         competitors: [''],
         productNames: ['']
     });
@@ -56,15 +57,35 @@ export default function ConfigForm({ onStart, initialData, isLoading }) {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-2">Industry / Vertical</label>
+                            <label className="block text-sm font-semibold text-slate-700 mb-2">Brand Logo URL (Optional)</label>
                             <input
-                                name="industry"
-                                value={formData.industry}
+                                name="brandLogoUrl"
+                                value={formData.brandLogoUrl || ''}
                                 onChange={handleChange}
-                                placeholder="e.g. Marketing Automation"
+                                placeholder="https://example.com/logo.png"
                                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                             />
                         </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-700 mb-2">Product Type (Required)</label>
+                            <select
+                                name="productType"
+                                value={formData.productType || 'SaaS'}
+                                onChange={handleChange}
+                                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 bg-white"
+                            >
+                                <option value="SaaS">SaaS / Software</option>
+                                <option value="FMCG">Consumer Product (Food / FMCG)</option>
+                                <option value="Healthcare">Healthcare</option>
+                                <option value="Finance">Finance</option>
+                                <option value="Education">Education</option>
+                                <option value="Local">Local Business</option>
+                            </select>
+                        </div>
+                        {/* Empty/future column to maintain grid */}
                     </div>
 
                     <div>
@@ -166,8 +187,8 @@ export default function ConfigForm({ onStart, initialData, isLoading }) {
                             )}
                         </button>
                     </div>
-                </div>
-            </div>
-        </div>
+                </div >
+            </div >
+        </div >
     );
 }

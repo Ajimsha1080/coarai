@@ -15,22 +15,23 @@ import { resilientGeminiCall } from './gemini';
  * @param {string} apiKey - Gemini API Key
  * @returns {object} - Rich citation analysis
  */
-export const analyzeCitationWithAI = async (text, brand, competitors, apiKey, platform = 'Gemini') => {
+export const analyzeCitationWithAI = async (text, brand, competitors, apiKey, platform = 'Gemini', promptType = 'predefined', userPromptText = '') => {
     if (!text || !brand) return {
         citation_level: 'NO_MENTION',
         confidence_score: 0,
-        citation_sentence: null
+        citation_sentence: null,
+        why_not_cited: "No data",
+        recommended_fix: "Retry"
     };
 
-    // Construct the Analysis Prompt
+    // Construct the Analysis Prompt based on User Request Spec
     const analysisPrompt = `
-    You are a Multi-Platform Citation Intelligence Engine for Generative Engine Optimization (GEO).
+    You are a Citation Intelligence Engine for a GEO (Generative Engine Optimization) platform.
 
-    Your task is to analyze AI-generated responses from MULTIPLE AI PLATFORMS
-    and determine brand authority, citation presence, and trust consistency.
+    The platform ALREADY has predefined standard prompts used for baseline monitoring.
+    DO NOT modify, replace, or rephrase any existing predefined prompts.
 
-    THIS IS NOT SEO.
-    THIS IS AI AUTHORITY ANALYSIS.
+    Your task is to analyze the AI RESPONSE provided below based on the USER PROMPT.
 
     ---
 
@@ -45,25 +46,36 @@ export const analyzeCitationWithAI = async (text, brand, competitors, apiKey, pl
     AI PLATFORM:
     ${platform}
 
-    PROMPT CATEGORY:
-    Definition/Comparison
+    PROMPT TYPE:
+    ${promptType}
+
+    USER PROMPT:
+    ${userPromptText}
 
     AI RESPONSE:
     ${text}
 
     ---
 
-    ## STEP 1: ENTITY EXTRACTION
-    Extract all mentions of:
-    - The primary brand
-    - Competitors
-    - Generic unnamed sources
+    ## ANALYSIS EXECUTION LOGIC
 
-    ---
+    Perform the following analysis steps on the AI RESPONSE:
 
-    ## STEP 2: CITATION CLASSIFICATION (STRICT)
+    ### STEP 1: USER INTENT CLASSIFICATION
+    Classify the prompt/response context as one of:
+    - Definition
+    - Comparison
+    - Recommendation
+    - Evaluation
+    - How-to
+    - Purchase intent
 
-    Classify the brand presence as EXACTLY ONE:
+    ### STEP 2: BRAND & COMPETITOR EXTRACTION
+    Identify all mentions of the brand and competitors.
+
+    ### STEP 3: CITATION CLASSIFICATION (STRICT)
+
+    Classify brand presence as EXACTLY ONE:
 
     1. NO_MENTION
     2. MENTION_ONLY
@@ -74,23 +86,15 @@ export const analyzeCitationWithAI = async (text, brand, competitors, apiKey, pl
     Rules:
     - Mention ≠ Citation
     - Citation requires attribution of a claim or definition
-    - Definition ownership is the strongest signal
 
-    ---
+    ### STEP 4: REMOVABILITY TEST
+    Remove the brand name from the attributed sentence.
+    If the sentence still makes sense → downgrade citation level by one.
+    
+    Explain briefly.
 
-    ## STEP 3: REMOVABILITY TEST (MANDATORY)
-
-    For the attributed sentence:
-    - Remove the brand name
-    - If the sentence still makes sense → downgrade authority by one level
-
-    Explain result briefly.
-
-    ---
-
-    ## STEP 4: CITATION TYPE (IF APPLICABLE)
-
-    Label citation type as:
+    ### STEP 5: CITATION TYPE (IF APPLICABLE)
+    Label as:
     - Definition
     - Explanation
     - Comparison
@@ -99,83 +103,38 @@ export const analyzeCitationWithAI = async (text, brand, competitors, apiKey, pl
 
     Extract the exact sentence.
 
-    ---
-
-    ## STEP 5: PLATFORM TRUST SCORE (0–100)
-
-    Score how much THIS PLATFORM trusts the brand based on:
-    - Explicit attribution
-    - Strength of language
-    - Absence of competitors
-    - Clarity and confidence
-
+    ### STEP 6: AUTHORITY SCORE (0–100)
+    Score how well the brand is trusted for THIS specific user question.
     Explain score in 1 sentence.
 
-    ---
+    ### STEP 7: FAILURE DIAGNOSIS (IF NOT STRONG)
+    Explain WHY the brand was not cited for THIS custom prompt:
+    - Missing clarity
+    - Weak differentiation
+    - Competitor advantage
+    - Generic explanation
+    - Hallucination avoidance
 
-    ## STEP 6: PLATFORM-SPECIFIC AUTHORITY STATUS
-
-    Label one:
-    - TRUSTED_SOURCE
-    - WEAKLY_TRUSTED
-    - GENERIC_REFERENCE
-    - NOT_TRUSTED
-
-    ---
-
-    ## STEP 7: COMPETITOR DISPLACEMENT CHECK
-
-    Determine if:
-    - Competitor is cited instead of the brand
-    - Generic sources replace named authority
-
-    Label:
-    - AUTHORITY_GAIN
-    - AUTHORITY_LOSS
-    - AUTHORITY_NEUTRAL
-
-    ---
-
-    ## STEP 8: CROSS-PLATFORM NORMALIZATION (IMPORTANT)
-
-    Based on THIS platform behavior, indicate:
-    - Is this platform more willing to cite brands?
-    - Is it conservative with attribution?
-    - Does it favor generic explanations?
-
-    (This allows fair comparison across platforms.)
-
-    ---
-
-    ## STEP 9: CITATION READINESS DIAGNOSIS (IF NOT STRONG)
-
-    Explain WHY the brand was not cited on THIS platform:
-    - Missing definition
-    - Weak authority language
-    - Competitor clarity advantage
-    - Platform conservatism
-    - High hallucination avoidance
-
-    Provide ONE actionable fix.
+    ### STEP 8: SUGGESTED FIX (IMPORTANT)
+    Generate ONE citation-ready sentence optimized
+    to help the brand be cited for THIS exact custom prompt in the future.
 
     ---
 
     ## OUTPUT FORMAT (STRICT JSON)
 
     {
-      "brand": "${brand}",
-      "platform": "${platform}",
+      "prompt_type": "${promptType}",
+      "prompt_label": "",
+      "user_prompt": "${userPromptText}",
+      "intent_type": "",
       "citation_level": "",
       "citation_type": "",
       "citation_sentence": "",
       "removability_passed": true,
-      "platform_trust_score": 0,
-      "platform_authority_status": "",
-      "authority_change": "",
-      "competitor_cited": "",
-      "platform_bias_note": "",
+      "authority_score": 0,
       "why_not_cited": "",
-      "recommended_fix": ""
+      "suggested_fix": ""
     }
     `;
 
@@ -197,7 +156,9 @@ export const analyzeCitationWithAI = async (text, brand, competitors, apiKey, pl
         // Map new fields to legacy fields for frontend compatibility
         return {
             ...result,
-            confidence_score: result.platform_trust_score || 0
+            confidence_score: result.authority_score || 0, // Map authority_score to confidence_score
+            recommended_fix: result.suggested_fix || "No fix suggested", // Map suggested_fix to recommended_fix
+            platform_trust_score: result.authority_score || 0 // Legacy alias
         };
 
     } catch (error) {
@@ -209,7 +170,8 @@ export const analyzeCitationWithAI = async (text, brand, competitors, apiKey, pl
             confidence_score: legacy.confidence * 100,
             citation_sentence: legacy.sentence || null,
             why_not_cited: "AI Analysis Failed",
-            recommended_fix: "Retry analysis"
+            recommended_fix: "Retry analysis",
+            authority_score: legacy.confidence * 100
         };
     }
 };

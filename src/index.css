@@ -30,11 +30,11 @@
 
 /* Custom Utilities */
 .clean-panel {
-    @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-sm;
+    @apply bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-white/20 dark:border-slate-800 shadow-sm;
 }
 
 .clean-card {
-    @apply bg-white rounded-xl shadow-sm border border-slate-100 transition-all duration-300 hover:shadow-md;
+    @apply bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800 transition-all duration-300 hover:shadow-md;
 }
 
 .clean-btn {

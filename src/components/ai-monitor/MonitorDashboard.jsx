@@ -1,18 +1,25 @@
 import React from 'react';
-import { Warning, Info, Sparkle, Robot, ChatCircleText, MagnifyingGlass } from '@phosphor-icons/react';
+import { Warning, Info } from '@phosphor-icons/react';
+import { Perplexity, Claude, Gemini, OpenAI } from '@lobehub/icons';
+import MarketPositionChart from './MarketPositionChart';
 
 // Platform Icons Helper
 const getPlatformIcon = (platformName) => {
     switch (platformName) {
-        case 'ChatGPT': return <Robot size={32} weight="fill" className="text-[#10A37F]" />;
-        case 'Gemini': return <Sparkle size={32} weight="fill" className="text-[#4E88FC]" />;
-        case 'Perplexity': return <MagnifyingGlass size={32} weight="bold" className="text-[#22B3B8]" />;
-        case 'Claude': return <ChatCircleText size={32} weight="fill" className="text-[#D97757]" />; // Using generic chat for Claude
-        default: return <Robot size={32} weight="fill" className="text-slate-400" />;
+        case 'ChatGPT':
+            return <OpenAI.Avatar size={32} />;
+        case 'Gemini':
+            return <Gemini.Color size={32} />;
+        case 'Perplexity':
+            return <Perplexity.Color size={32} />;
+        case 'Claude':
+            return <Claude.Color size={32} />;
+        default:
+            return <div className="w-8 h-8 rounded-full bg-slate-300"></div>; // Fallback
     }
 };
 
-export default function MonitorDashboard({ runData, isRunning, progress }) {
+export default function MonitorDashboard({ runData, isRunning, progress, history = [] }) {
 
     // --- 1. Loading State ---
     if (!runData && isRunning) {
@@ -77,18 +84,25 @@ export default function MonitorDashboard({ runData, isRunning, progress }) {
         .map(([name, count]) => ({
             name,
             count,
-            percentage: Math.round((count / metrics.totalPrompts) * 100)
+            percentage: Math.round((count / metrics.totalPrompts) * 100),
+            percentage: Math.round((count / metrics.totalPrompts) * 100),
+            brand_logo_url: name === myBrand ? config.brandLogoUrl : null
         }))
+        .filter(b => b.name && b.name.trim() !== '') // Filter out empty names
         .sort((a, b) => b.count - a.count);
 
 
     // --- 3. Data Processing for Right Column (Platform Visibility) ---
+    // Only show platforms that actually have data in the response set
+    // OR show all but mark them as "Not Connected" / "No Data" explicitly
     const platforms = ['ChatGPT', 'Gemini', 'Perplexity', 'Claude'];
 
     const platformStats = platforms.map(platform => {
         const platformResponses = responses.filter(r => r.platform === platform);
         const total = platformResponses.length;
-        if (total === 0) return { platform, score: 0, total: 0 };
+
+        // If no data, return null score to indicate "Not Ran"
+        if (total === 0) return { platform, score: null, total: 0 };
 
         const mentionedCount = platformResponses.filter(r => r.analysis.mentioned).length;
 
@@ -119,66 +133,51 @@ export default function MonitorDashboard({ runData, isRunning, progress }) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
                 {/* COLUMN 1: MARKET POSITION */}
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-                    <h2 className="text-xl font-display font-bold text-slate-900 mb-6">Market Position</h2>
-
-                    <div className="space-y-6">
-                        {marketPositionData.map((brand, idx) => {
-                            const isMe = brand.name === myBrand;
-                            // Ensure at least a tiny sliver is shown so tooltip works if 0
-                            const visualWidth = Math.max(brand.percentage, 2);
-
-                            return (
-                                <div key={idx} className="group relative">
-                                    <div className="flex justify-between items-end mb-2">
-                                        <span className={`font-semibold ${isMe ? 'text-slate-900' : 'text-slate-600'}`}>
-                                            {brand.name} {isMe && <span className="ml-2 bg-orange-100 text-orange-700 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">You</span>}
-                                        </span>
-                                        <span className="text-sm font-medium text-slate-500">{brand.percentage}%</span>
-                                    </div>
-
-                                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                                        <div
-                                            className={`h-full rounded-full transition-all duration-1000 ease-out ${isMe ? 'bg-gradient-to-r from-orange-400 to-orange-600' : 'bg-gradient-to-r from-emerald-400 to-emerald-600'}`}
-                                            style={{ width: `${visualWidth}%` }}
-                                        />
-                                    </div>
-
-                                    {brand.count === 0 && (
-                                        <div className="absolute -top-8 left-0 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-xs px-2 py-1 rounded">
-                                            No mentions in monitored prompts
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
+                <MarketPositionChart
+                    data={marketPositionData}
+                    myBrand={myBrand}
+                    history={history}
+                />
 
                 {/* COLUMN 2: PLATFORM VISIBILITY */}
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 h-full flex flex-col">
-                    <h2 className="text-xl font-display font-bold text-slate-900 mb-6">Track AI Visibility</h2>
+                <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 h-full flex flex-col transition-colors duration-300">
+                    <div className="flex justify-between items-start mb-6">
+                        <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white">Track AI Visibility</h2>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-grow">
+                        {/* Overall Average Score */}
+                        {(() => {
+                            const activeApps = platformStats.filter(p => p.score !== null);
+                            const avg = activeApps.length > 0
+                                ? Math.round(activeApps.reduce((a, b) => a + b.score, 0) / activeApps.length)
+                                : 0;
+
+                            if (activeApps.length === 0) return null;
+
+                            return (
+                                <div className="text-right">
+                                    <div className="text-3xl font-bold text-slate-900 dark:text-white leading-none">{avg}%</div>
+                                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mt-1">Average Visibility</p>
+                                </div>
+                            );
+                        })()}
+                    </div>
+
+                    <div className="space-y-3 flex-grow">
                         {platformStats.map((stat, idx) => (
-                            <div key={idx} className="p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 bg-white flex flex-col justify-between h-auto min-h-[140px]">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="p-2 bg-slate-50 rounded-lg">
+                            <div key={idx} className="flex items-center justify-between p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 transition-all group">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg group-hover:bg-slate-100 dark:group-hover:bg-slate-700 transition-colors">
                                         {getPlatformIcon(stat.platform)}
                                     </div>
-                                    {stat.total === 0 && (
-                                        <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded">
-                                            No Data
-                                        </span>
-                                    )}
+                                    <span className="font-medium text-slate-700 dark:text-slate-300">{stat.platform}</span>
                                 </div>
 
-                                <div>
-                                    <h4 className="text-slate-500 font-medium text-sm mb-1">{stat.platform}</h4>
-                                    <div className="flex items-baseline gap-1">
-                                        <span className="text-3xl font-bold text-slate-900">{stat.score}%</span>
-                                        <span className="text-xs text-slate-400 font-medium">visibility</span>
-                                    </div>
+                                <div className="text-right">
+                                    {stat.score !== null ? (
+                                        <span className="text-lg font-bold text-slate-900 dark:text-white">{stat.score}%</span>
+                                    ) : (
+                                        <span className="text-xs font-medium text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded">Not Connected</span>
+                                    )}
                                 </div>
                             </div>
                         ))}

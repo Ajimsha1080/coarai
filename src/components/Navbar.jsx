@@ -13,11 +13,16 @@ import {
     Quotes,
     ChartLineUp,
     MagicWand,
-    MagnifyingGlass
+    MagnifyingGlass,
+    Sun,
+    Moon,
+    Eye
 } from '@phosphor-icons/react';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Navbar() {
     const { currentUser, loginWithGoogle, logout } = useAuth();
+    const { theme, toggleTheme } = useTheme();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [isProductsOpen, setIsProductsOpen] = useState(false);
 
@@ -45,6 +50,7 @@ export default function Navbar() {
                 { name: "AI Visibility Monitor", desc: "Track share of voice vs competitors", icon: ChartLineUp, bg: "bg-emerald-50 text-emerald-600", path: "/ai-monitor" },
                 { name: "Citation Intelligence", desc: "Check authority and fix citations", icon: Quotes, bg: "bg-amber-50 text-amber-600", path: "/citation-intelligence" },
                 { name: "Prompt Drift Monitor", desc: "Detect stability issues in AI responses", icon: TrendUp, bg: "bg-rose-50 text-rose-600", path: "/prompt-drift" },
+                { name: "Prompt Visibility", desc: "Track brand in custom AI prompts", icon: Eye, bg: "bg-cyan-50 text-cyan-600", path: "/prompt-visibility" },
             ]
         },
         tools: {
@@ -147,7 +153,16 @@ export default function Navbar() {
                         </a>
 
                     </div>
-                    <div>
+                    <div className="flex items-center gap-4">
+                        {/* Theme Toggle */}
+                        <button
+                            onClick={toggleTheme}
+                            className="p-2 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
+                            title="Toggle Dark Mode"
+                        >
+                            {theme === 'dark' ? <Sun size={20} weight="fill" /> : <Moon size={20} weight="fill" />}
+                        </button>
+
                         {currentUser ? (
                             <div className="relative">
                                 <button

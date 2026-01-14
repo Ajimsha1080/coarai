@@ -13,6 +13,7 @@ export default function AiMonitorPage({ apiKey }) {
     const [view, setView] = useState('loading'); // 'loading', 'config', 'dashboard'
     const [config, setConfig] = useState(null);
     const [currentRun, setCurrentRun] = useState(null);
+    const [history, setHistory] = useState([]);
     const [isRunning, setIsRunning] = useState(false);
     const [progress, setProgress] = useState(0);
 
@@ -25,12 +26,17 @@ export default function AiMonitorPage({ apiKey }) {
             }
             // Check for last run
             try {
-                const q = query(collection(db, `users/${currentUser.uid}/monitor_runs`), orderBy('createdAt', 'desc'), limit(1));
+                // Fetch recent history for trends (top 10 closest runs)
+                // Ideally this should filter by the specific "project" or config, but for MVP we take the user's recent runs.
+                const q = query(collection(db, `users/${currentUser.uid}/monitor_runs`), orderBy('createdAt', 'desc'), limit(10));
                 const snap = await getDocs(q);
+
                 if (!snap.empty) {
-                    const lastRun = { id: snap.docs[0].id, ...snap.docs[0].data() };
-                    setCurrentRun(lastRun);
-                    setConfig(lastRun.config);
+                    const allRuns = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    const latestRun = allRuns[0];
+                    setCurrentRun(latestRun);
+                    setHistory(allRuns); // Save full history
+                    setConfig(latestRun.config);
                     setView('dashboard');
                 } else {
                     setView('config');
@@ -92,9 +98,10 @@ export default function AiMonitorPage({ apiKey }) {
                 });
             }
 
-            // Assign a random platform for this simulation step to populate the dashboard categories
-            const platforms = ['ChatGPT', 'Gemini', 'Perplexity', 'Claude'];
-            const simulatedPlatform = platforms[Math.floor(Math.random() * platforms.length)];
+            // Assign the platform based on the engine used.
+            // Since we currently only have Gemini connected, we hardcode it to Gemini.
+            // In the future, we will iterate through enabled platforms.
+            const simulatedPlatform = 'Gemini';
 
             responses.push({
                 prompt: prompt.text,
@@ -165,6 +172,7 @@ export default function AiMonitorPage({ apiKey }) {
                 {view === 'dashboard' && (
                     <MonitorDashboard
                         runData={currentRun}
+                        history={history}
                         isRunning={isRunning}
                         progress={progress}
                     />

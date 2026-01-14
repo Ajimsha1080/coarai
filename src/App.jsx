@@ -15,6 +15,7 @@ import ScriptGeoOptimizerPage from './pages/ScriptGeoOptimizerPage';
 import PromptDriftPage from './pages/PromptDriftPage';
 import YouTubeOptimizer from './pages/YouTubeOptimizer';
 import CitationIntelligencePage from './pages/CitationIntelligencePage';
+import PromptVisibilityPage from './pages/PromptVisibilityPage';
 
 // ✅ Lazy-loaded page (path must match EXACT folder name)
 const AiMonitorPage = React.lazy(
@@ -24,6 +25,7 @@ const AiMonitorPage = React.lazy(
 // 🔒 NEVER put API keys in frontend
 // 🔒 API Keys loaded from Environment Variables
 const API_KEY = import.meta.env.VITE_GOOGLE_GEN_AI_KEY;
+console.log("DEBUG: API_KEY Loaded:", API_KEY ? "Yes (starts with " + API_KEY.substring(0, 5) + ")" : "No (Undefined)");
 // wrapper to allow standard TAVILY_API_KEY or VITE_TAVILY_API_KEY
 const TAVILY_API_KEY = import.meta.env.VITE_TAVILY_API_KEY || import.meta.env.TAVILY_API_KEY;
 
@@ -33,36 +35,59 @@ import ApiKeyModal from './components/ApiKeyModal';
 function App() {
     return (
         <Router>
-            <div className="bg-slate-50 font-sans text-dark-800 antialiased min-h-screen flex flex-col relative">
+            <div className="bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 antialiased min-h-screen flex flex-col relative transition-colors duration-300">
 
                 {/* Background decoration */}
                 {/* Animated Background decoration */}
-                <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-                    <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]"></div>
+                <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+                    <div className="absolute inset-0 bg-grid-slate-100 dark:bg-grid-slate-900/[0.05] [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]"></div>
+
+                    {/* Orb 1 - Top Left */}
                     <motion.div
                         animate={{
-                            scale: [1, 1.05, 1],
-                            opacity: [0.3, 0.4, 0.3],
+                            x: [0, 50, 0],
+                            y: [0, 30, 0],
+                            scale: [1, 1.1, 1],
+                            opacity: [0.3, 0.5, 0.3],
+                        }}
+                        transition={{
+                            duration: 15,
+                            repeat: Infinity,
+                            ease: "easeInOut"
+                        }}
+                        className="absolute top-[-10%] left-[-10%] w-[800px] h-[800px] bg-indigo-400/20 rounded-full blur-[100px]"
+                    />
+
+                    {/* Orb 2 - Bottom Right */}
+                    <motion.div
+                        animate={{
+                            x: [0, -40, 0],
+                            y: [0, -60, 0],
+                            scale: [1, 1.2, 1],
+                            opacity: [0.2, 0.4, 0.2],
                         }}
                         transition={{
                             duration: 20,
                             repeat: Infinity,
-                            ease: "easeInOut"
+                            ease: "easeInOut",
+                            delay: 2
                         }}
-                        className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-200/30 rounded-full blur-3xl"
+                        className="absolute bottom-[-10%] right-[-10%] w-[700px] h-[700px] bg-purple-400/20 rounded-full blur-[100px]"
                     />
+
+                    {/* Orb 3 - Center (Floating) */}
                     <motion.div
                         animate={{
-                            scale: [1, 1.1, 1],
-                            opacity: [0.2, 0.3, 0.2],
+                            x: [0, 100, -100, 0],
+                            y: [0, -50, 50, 0],
+                            opacity: [0.1, 0.3, 0.1],
                         }}
                         transition={{
                             duration: 25,
                             repeat: Infinity,
-                            ease: "easeInOut",
-                            delay: 2
+                            ease: "linear"
                         }}
-                        className="absolute bottom-0 right-0 translate-y-1/3 w-[600px] h-[600px] bg-brand-100/20 rounded-full blur-3xl"
+                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] bg-blue-300/10 rounded-full blur-[120px]"
                     />
                 </div>
 
@@ -168,6 +193,17 @@ function App() {
                                 path="/citation-intelligence"
                                 element={
                                     <CitationIntelligencePage
+                                        apiKey={API_KEY}
+                                        onRequireApiKey={() =>
+                                            alert('Backend not configured yet')
+                                        }
+                                    />
+                                }
+                            />
+                            <Route
+                                path="/prompt-visibility"
+                                element={
+                                    <PromptVisibilityPage
                                         apiKey={API_KEY}
                                         onRequireApiKey={() =>
                                             alert('Backend not configured yet')

@@ -1,7 +1,5 @@
 const MODELS = [
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
-    "gemini-2.0-flash-exp"
+    "gemini-1.5-flash"
 ];
 
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -43,7 +41,11 @@ export async function resilientGeminiCall(apiKey, payload, maxRetries = 2) {
                         else break; // Switch to next model
                     }
 
-                    // For 400 (Bad Request) or 401 (Unauthorized), fail immediately (don't retry)
+                    // For 400 (Bad Request), 401 (Unauthorized), or 404 (Not Found), fail immediately (don't retry)
+                    if ([400, 401, 404].includes(response.status)) {
+                        throw new Error(`Gemini API Error (${response.status}): ${errorText} (Model: ${model})`);
+                    }
+
                     throw new Error(`Gemini API Error (${response.status}): ${errorText}`);
                 }
 
@@ -61,9 +63,10 @@ export async function resilientGeminiCall(apiKey, payload, maxRetries = 2) {
             } catch (error) {
                 console.warn(`[Gemini] Error with ${model}:`, error.message);
                 lastError = error;
-                // If it's a fatal error (like 400), stop retrying this model
-                if (error.message.includes("400") || error.message.includes("401")) {
-                    throw error;
+                // If it's a fatal error (like 400 or 404), stop retrying this model, distinct from rate limits
+                if (error.message.includes("400") || error.message.includes("401") || error.message.includes("404")) {
+                    console.warn(`[Gemini] Fatal error with ${model}, skipping to next model/fallback.`);
+                    break; // Break the retry loop, try next model or fallback
                 }
             }
         }
