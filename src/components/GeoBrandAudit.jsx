@@ -158,73 +158,106 @@ export default function GeoBrandAudit({ apiKey, onRequireApiKey }) {
         setStatusMessage("Generating Audit Report...");
 
         try {
-            const prompt = `
-                You are a **Generative Engine Optimizer (GEO) Brand Audit Analyst**.
+            let prompt = '';
 
-                You do NOT remember previous runs.
-                You do NOT store data.
-                You analyze ONLY the data provided in this request.
+            if (source === 'content') {
+                // SPECIALIZED CONTENT AUDIT PROMPT
+                prompt = `
+                    You are a **Generative Engine Optimization (GEO) Analyst**.
+                    Analyze the PROVIDED WEBSITE CONTENT to determine how well it communicates the brand to AI systems.
 
-                Your job is to audit how a brand is represented in AI-generated answers
-                and generative search systems (ChatGPT, Gemini, Perplexity).
+                    INPUT DATA:
+                    Brand: ${formData.brandName}
+                    Content: ${finalWebsiteContent || "No specific content provided."}
+                    GEO/FAQ: ${formData.geoContent || "None"}
 
-                IMPORTANT: You must output a JSON object with two potentially separate analyses.
+                    OBJECTIVES:
+                    1. ENTITY EXTRACTION: What key entities/facts would an AI extract from this text? (Product name, features, pricing, audience).
+                    2. GEO READINESS: Is the content structured for AI (headings, lists, Q&A)? 
+                    3. GAPS: What is missing compared to 'gold standard' documentation?
 
-                –––––––––––––––––
-                INPUT
-                –––––––––––––––––
-
-                Brand Name:
-                ${formData.brandName || "Not Provided"}
-
-                Website Content (raw text or summary):
-                ${finalWebsiteContent || "Not provided"}
-
-                GEO / FAQ / Help Page Content (if any):
-                ${formData.geoContent || "Not provided"}
-
-                Competitors (optional):
-                ${formData.competitors || "Not provided"}
-
-                –––––––––––––––––
-                AUDIT OBJECTIVES
-                –––––––––––––––––
-
-                ### PART 1: BRAND KNOWLEDGE ANALYSIS (Based ONLY on Brand Name)
-                Simulate how a general AI model would answer these questions based on its TRAINING DATA ONLY (ignore the provided website content for this part if possible, or use it to verify alignment):
-                • "What is [Brand Name]?"
-                • "What do they do?"
-                • "Who is it for?"
-                
-                Identify:
-                - General Brand Awareness (High/Low/Niche)
-                - Potential Hallucinations (Confusing it with others?)
-                - Positioning clarity in the public training set.
-
-                ### PART 2: CONTENT OPTIMIZATION ANALYSIS (Based ONLY on the Provided Content)
-                Evaluate the provided text for:
-                • Clarity & Completeness (Does it explain the product well?)
-                • GEO Readiness (Is it formatted for AI? FAQs? Definitions?)
-                • Differentiation (vs Competitors)
-                
-                Generate a list of ACTIONS to improve this specific content.
-
-                –––––––––––––––––
-                FINAL OUTPUT FORMAT (JSON)
-                –––––––––––––––––
-                You must return a raw JSON object string (no markdown formatting around it).
-                Structure:
-                {
-                    "brandAnalysis": "Markdown string for Part 1 (Brand Representation). include a header '🔍 AI Brand Representation'.",
-                    "contentAnalysis": "Markdown string for Part 2 (Content Optimization). include a header '🚀 Content Optimization'.",
-                    "scores": {
-                        "aiAccuracy": 0-100,
-                        "contentContextClarity": 0-100,
-                        "contentCompleteness": 0-100,
-                        "geoReadiness": 0-100
+                    OUTPUT JSON (Raw JSON only):
+                    {
+                        "brandAnalysis": "Markdown string under header '🔍 Entity & Fact Extraction'. List the core facts an AI 'learns' from this text only.",
+                        "contentAnalysis": "Markdown string under header '🚀 GEO Optimization Actions'. distinct list of structural changes (e.g. 'Add <h2> for Features', 'Define [Term] explicitly').",
+                        "scores": {
+                            "aiAccuracy": 0-100, (How accurate are the extracted facts?)
+                            "contentContextClarity": 0-100, (Is the text unambiguous?)
+                            "contentCompleteness": 0-100, (Does it cover the 5 Ws?)
+                            "geoReadiness": 0-100 (Is it machine-readable/structured?)
+                        }
                     }
-                }
-            `;
+                 `;
+            } else {
+                // STANDARD BRAND AUDIT PROMPT (Existing Logic)
+                prompt = `
+                    You are a **Generative Engine Optimizer (GEO) Brand Audit Analyst**.
+
+                    You do NOT remember previous runs.
+                    You do NOT store data.
+                    You analyze ONLY the data provided in this request.
+
+                    Your job is to audit how a brand is represented in AI-generated answers
+                    and generative search systems (ChatGPT, Gemini, Perplexity).
+
+                    IMPORTANT: You must output a JSON object with two potentially separate analyses.
+
+                    –––––––––––––––––
+                    INPUT
+                    –––––––––––––––––
+
+                    Brand Name:
+                    ${formData.brandName || "Not Provided"}
+
+                    Website Content (raw text or summary):
+                    ${finalWebsiteContent || "Not provided"}
+
+                    GEO / FAQ / Help Page Content (if any):
+                    ${formData.geoContent || "Not provided"}
+
+                    Competitors (optional):
+                    ${formData.competitors || "Not provided"}
+
+                    –––––––––––––––––
+                    AUDIT OBJECTIVES
+                    –––––––––––––––––
+
+                    ### PART 1: BRAND KNOWLEDGE ANALYSIS (Based ONLY on Brand Name)
+                    Simulate how a general AI model would answer these questions based on its TRAINING DATA ONLY (ignore the provided website content for this part if possible, or use it to verify alignment):
+                    • "What is [Brand Name]?"
+                    • "What do they do?"
+                    • "Who is it for?"
+                    
+                    Identify:
+                    - General Brand Awareness (High/Low/Niche)
+                    - Potential Hallucinations (Confusing it with others?)
+                    - Positioning clarity in the public training set.
+
+                    ### PART 2: CONTENT OPTIMIZATION ANALYSIS (Based ONLY on the Provided Content)
+                    Evaluate the provided text for:
+                    • Clarity & Completeness (Does it explain the product well?)
+                    • GEO Readiness (Is it formatted for AI? FAQs? Definitions?)
+                    • Differentiation (vs Competitors)
+                    
+                    Generate a list of ACTIONS to improve this specific content.
+
+                    –––––––––––––––––
+                    FINAL OUTPUT FORMAT (JSON)
+                    –––––––––––––––––
+                    You must return a raw JSON object string (no markdown formatting around it).
+                    Structure:
+                    {
+                        "brandAnalysis": "Markdown string for Part 1 (Brand Representation). include a header '🔍 AI Brand Representation'.",
+                        "contentAnalysis": "Markdown string for Part 2 (Content Optimization). include a header '🚀 Content Optimization'.",
+                        "scores": {
+                            "aiAccuracy": 0-100,
+                            "contentContextClarity": 0-100,
+                            "contentCompleteness": 0-100,
+                            "geoReadiness": 0-100
+                        }
+                    }
+                `;
+            }
 
             const payload = {
                 contents: [{ parts: [{ text: prompt }] }]
@@ -414,7 +447,7 @@ export default function GeoBrandAudit({ apiKey, onRequireApiKey }) {
                             className="clean-card bg-white p-6 rounded-2xl shadow-sm border border-slate-100"
                         >
                             <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                                <FileText className="text-violet-500" size={20} /> Content Context
+                                <FileText className="text-violet-500" size={20} /> Content Audit
                             </h3>
                             <div className="space-y-4">
                                 <div>
@@ -466,7 +499,7 @@ export default function GeoBrandAudit({ apiKey, onRequireApiKey }) {
                                 {isLoading && loadingSource === 'content' ? (
                                     <><span>Analyzing...</span><div className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div></>
                                 ) : (
-                                    <><span>Run Brand Audit</span><Brain weight="bold" /></>
+                                    <><span>Run Content Audit</span><Brain weight="bold" /></>
                                 )}
                             </button>
                         </motion.div>

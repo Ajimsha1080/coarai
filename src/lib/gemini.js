@@ -1,5 +1,8 @@
 const MODELS = [
-    "gemini-1.5-flash"
+    "gemini-2.0-flash-exp",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro"
 ];
 
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -41,9 +44,17 @@ export async function resilientGeminiCall(apiKey, payload, maxRetries = 2) {
                         else break; // Switch to next model
                     }
 
-                    // For 400 (Bad Request), 401 (Unauthorized), or 404 (Not Found), fail immediately (don't retry)
-                    if ([400, 401, 404].includes(response.status)) {
+                    // For 400 (Bad Request) or 401 (Unauthorized), fail immediately (don't retry)
+                    if ([400, 401].includes(response.status)) {
                         throw new Error(`Gemini API Error (${response.status}): ${errorText} (Model: ${model})`);
+                    }
+
+                    // For 404 (Not Found), this specific model is missing/unsupported. 
+                    // Log it and BREAK the inner loop to try the next model immediately (no retries for 404).
+                    if (response.status === 404) {
+                        console.warn(`[Gemini] Model ${model} not found (404). Skipping to next model.`);
+                        lastError = new Error(`Gemini ${model} Not Found: ${errorText}`);
+                        break;
                     }
 
                     throw new Error(`Gemini API Error (${response.status}): ${errorText}`);
@@ -63,11 +74,13 @@ export async function resilientGeminiCall(apiKey, payload, maxRetries = 2) {
             } catch (error) {
                 console.warn(`[Gemini] Error with ${model}:`, error.message);
                 lastError = error;
-                // If it's a fatal error (like 400 or 404), stop retrying this model, distinct from rate limits
-                if (error.message.includes("400") || error.message.includes("401") || error.message.includes("404")) {
-                    console.warn(`[Gemini] Fatal error with ${model}, skipping to next model/fallback.`);
-                    break; // Break the retry loop, try next model or fallback
+                // If it's a fatal error (like 400 or 401), stop retrying this model and EVERYTHING
+                if (error.message.includes("400") || error.message.includes("401")) {
+                    console.warn(`[Gemini] Fatal error with ${model}, aborting.`);
+                    throw error; // Re-throw fatal errors to stop the entire chain
                 }
+                // For other errors (network, etc), we might retry or just move to next model if retries exhausted
+                if (error.message.includes("Not Found")) break; // Move to next model
             }
         }
     }
@@ -116,7 +129,21 @@ export async function resilientGeminiCall(apiKey, payload, maxRetries = 2) {
         }
     } else {
         // Generic Text Mock
-        simulatedText = "## ⚠️ Simulation Mode Active\n\nYour API quota has been exceeded, so we are simulating this response.\n\n* **Action:** Check your Google Cloud Console billing.\n* **Result:** The app is continuing to function in demo mode.";
+        let errorReason = "Your API quota has been exceeded";
+        let actionItem = "Check your Google Cloud Console billing.";
+
+        if (lastError?.message?.includes("400") || lastError?.message?.includes("401")) {
+            errorReason = "Your API Key is missing or invalid";
+            actionItem = "Update VITE_GEMINI_API_KEY in your .env file.";
+        }
+
+        simulatedText = `## ⚠️ Simulation Mode Active
+
+${errorReason}, so we are simulating this response.
+
+* **Action:** ${actionItem}
+* **Result:** The app is continuing to function in demo mode.
+* **Debug:** ${lastError?.message || "Unknown error"}`;
     }
 
     return {

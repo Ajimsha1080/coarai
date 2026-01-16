@@ -261,7 +261,6 @@ export default function DriftDashboard({ apiKey, onRequireApiKey }) {
                 icon,
                 details,
                 rationale,
-                rationale,
                 category: b.tag || categorizePrompt(b.prompt, b.type === 'CUSTOM')
             };
         });

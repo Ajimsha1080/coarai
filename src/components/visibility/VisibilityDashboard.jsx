@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import {
     Play, CheckCircle, XCircle, Warning, CaretDown, CaretUp,
-    Plus, Trash, Globe, Eye, Lightning
+    Plus, Trash, Globe, Eye, Lightning, ArrowCounterClockwise,
+    Buildings, FileText, Target
 } from '@phosphor-icons/react';
 import { runVisibilityScan } from '../../lib/promptVisibilityService';
 import { AVAILABLE_PLATFORMS } from '../../lib/ai-adapters';
@@ -74,108 +75,136 @@ export default function VisibilityDashboard({ apiKey, onRequireApiKey }) {
         <div className="max-w-6xl mx-auto px-4 py-12">
 
             {/* Header */}
-            <div className="mb-12">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-900 text-white text-xs font-bold uppercase tracking-wide mb-4">
-                    <Eye weight="fill" className="text-cyan-400" />
-                    AI Visibility Tracker
-                </div>
-                <h1 className="text-4xl font-display font-bold text-slate-900 mb-4">
-                    Do you exist in the <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-cyan-500">AI Mindshare</span>?
-                </h1>
-                <p className="text-slate-600 max-w-2xl text-lg">
-                    Check if your brand is recommended across ChatGPT, Gemini, Claude, and Perplexity when potential customers ask specific questions.
-                </p>
-            </div>
+            <header className="mb-12 text-center relative">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-100 border border-violet-200 text-violet-700 text-xs font-bold uppercase tracking-wider mb-6">
+                        <span className="w-2 h-2 rounded-full bg-violet-600 animate-pulse"></span>
+                        AI Mindshare Analysis
+                    </div>
+                    <h1 className="text-4xl md:text-5xl font-display font-bold mb-4 tracking-tight text-slate-900">
+                        Brand <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-indigo-600">Visibility Tracker</span>
+                    </h1>
+                    <p className="text-slate-600 max-w-2xl mx-auto text-lg">
+                        Check if your brand is recommended across ChatGPT, Gemini, Claude, and Perplexity when potential customers ask specific questions.
+                    </p>
+                </motion.div>
+            </header>
 
             {/* Config Panel */}
-            <div className="grid lg:grid-cols-3 gap-8 mb-12">
-                {/* Left: Configuration */}
-                <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Brand Name</label>
-                        <input
-                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-500 mb-4"
-                            placeholder="e.g. Asana"
-                            value={config.brand}
-                            onChange={e => setConfig({ ...config, brand: e.target.value })}
-                        />
-
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Aliases (Optional)</label>
-                        <input
-                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-500 text-sm"
-                            placeholder="e.g. Asana Inc, Asana.com"
-                            value={config.synonyms}
-                            onChange={e => setConfig({ ...config, synonyms: e.target.value })}
-                        />
-                        <p className="text-[10px] text-slate-400 mt-2">Comma separated variations to detect.</p>
-                    </div>
-
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-4">Target Models</label>
-                        <div className="space-y-2">
-                            {AVAILABLE_PLATFORMS.map(p => (
-                                <button
-                                    key={p.id}
-                                    onClick={() => toggleModel(p.id)}
-                                    className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${config.models.includes(p.id)
-                                            ? 'border-indigo-500 bg-indigo-50/50'
-                                            : 'border-slate-200 hover:bg-slate-50'
-                                        }`}
-                                >
-                                    <span className={`text-sm font-bold ${config.models.includes(p.id) ? 'text-indigo-900' : 'text-slate-600'}`}>
-                                        {p.name}
-                                    </span>
-                                    {config.models.includes(p.id) && <CheckCircle weight="fill" className="text-indigo-500" />}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right: Prompts & Run */}
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="font-bold text-slate-900 text-lg">Visibility Prompts</h3>
-                            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">Max 3</span>
-                        </div>
-
-                        <div className="space-y-4 mb-8">
-                            {config.prompts.map((p, i) => (
-                                <div key={i} className="relative">
-                                    <span className="absolute left-4 top-3.5 text-xs font-bold text-slate-400">Q{i + 1}</span>
-                                    <input
-                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 transition-all text-sm"
-                                        placeholder={i === 0 ? "Who is the best project management tool?" : "Enter another question..."}
-                                        value={p}
-                                        onChange={e => handlePromptChange(i, e.target.value)}
-                                        maxLength={250}
-                                    />
-                                    <div className="text-right text-[10px] text-slate-300 mt-1">{p.length}/250</div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <button
-                            onClick={handleRun}
-                            disabled={status === 'running'}
-                            className="w-full py-4 bg-slate-900 hover:bg-black text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 disabled:opacity-70 disabled:cursor-wait"
+            {status !== 'complete' && (
+                <div className="grid lg:grid-cols-3 gap-8 mb-12">
+                    {/* Left: Configuration */}
+                    <div className="lg:col-span-1 space-y-6">
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}
+                            className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"
                         >
-                            {status === 'running' ? (
-                                <>
-                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    {loadingMsg}
-                                </>
-                            ) : (
-                                <>
-                                    <Lightning weight="fill" className="text-yellow-400" />
-                                    Run Visibility Scan
-                                </>
-                            )}
-                        </button>
+                            <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
+                                <Buildings className="text-violet-500" size={20} /> Brand Details
+                            </h3>
+
+                            <div className="space-y-5">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Brand Name *</label>
+                                    <input
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                                        placeholder="e.g. Asana"
+                                        value={config.brand}
+                                        onChange={e => setConfig({ ...config, brand: e.target.value })}
+                                    />
+                                    <p className="text-xs text-slate-400 mt-1">The main entity name to search for.</p>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Aliases (Optional)</label>
+                                    <input
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                                        placeholder="e.g. Asana Inc, Asana.com"
+                                        value={config.synonyms}
+                                        onChange={e => setConfig({ ...config, synonyms: e.target.value })}
+                                    />
+                                    <p className="text-xs text-slate-400 mt-1">Comma separated variations.</p>
+                                </div>
+                            </div>
+                        </motion.div>
+
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}
+                            className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"
+                        >
+                            <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                                <Target className="text-violet-500" size={20} /> Target Models
+                            </h3>
+                            <div className="space-y-2">
+                                {AVAILABLE_PLATFORMS.map(p => (
+                                    <button
+                                        key={p.id}
+                                        onClick={() => toggleModel(p.id)}
+                                        className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${config.models.includes(p.id)
+                                            ? 'border-violet-500 bg-violet-50 text-violet-900'
+                                            : 'border-slate-200 hover:bg-slate-50 text-slate-600'
+                                            }`}
+                                    >
+                                        <span className="text-sm font-bold">
+                                            {p.name}
+                                        </span>
+                                        {config.models.includes(p.id) && <CheckCircle weight="fill" className="text-violet-500" />}
+                                    </button>
+                                ))}
+                            </div>
+                        </motion.div>
+                    </div>
+
+                    {/* Right: Prompts & Run */}
+                    <div className="lg:col-span-2 space-y-6">
+                        <motion.div
+                            initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}
+                            className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm h-full flex flex-col"
+                        >
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                                    <FileText className="text-violet-500" size={20} /> Visibility Prompts
+                                </h3>
+                                <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">Max 3</span>
+                            </div>
+
+                            <div className="space-y-4 mb-8 flex-1">
+                                {config.prompts.map((p, i) => (
+                                    <div key={i} className="relative">
+                                        <span className="absolute left-4 top-3.5 text-xs font-bold text-slate-400">Q{i + 1}</span>
+                                        <input
+                                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-violet-100 hover:border-violet-300 transition-all text-sm"
+                                            placeholder={i === 0 ? "Who is the best project management tool?" : "Enter another question..."}
+                                            value={p}
+                                            onChange={e => handlePromptChange(i, e.target.value)}
+                                            maxLength={250}
+                                        />
+                                        <div className="text-right text-[10px] text-slate-300 mt-1">{p.length}/250</div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <button
+                                onClick={handleRun}
+                                disabled={status === 'running'}
+                                className="w-full py-4 bg-slate-900 hover:bg-violet-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 disabled:opacity-70 disabled:cursor-wait mt-auto"
+                            >
+                                {status === 'running' ? (
+                                    <>
+                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        {loadingMsg}
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>Run Visibility Scan</span>
+                                        <Lightning weight="fill" className="text-yellow-400" />
+                                    </>
+                                )}
+                            </button>
+                        </motion.div>
                     </div>
                 </div>
-            </div>
+            )}
 
             {/* Results Section */}
             {results && status === 'complete' && (
@@ -245,8 +274,8 @@ export default function VisibilityDashboard({ apiKey, onRequireApiKey }) {
                                                     key={i}
                                                     title={`${r.modelName}: ${r.status}`}
                                                     className={`w-8 h-8 rounded-full flex items-center justify-center border ${r.status === 'PRESENT' ? 'bg-green-50 border-green-200 text-green-600' :
-                                                            r.status === 'ERROR' ? 'bg-slate-100 border-slate-200 text-slate-400' :
-                                                                'bg-red-50 border-red-100 text-red-400'
+                                                        r.status === 'ERROR' ? 'bg-slate-100 border-slate-200 text-slate-400' :
+                                                            'bg-red-50 border-red-100 text-red-400'
                                                         }`}
                                                 >
                                                     {r.status === 'PRESENT' ? <CheckCircle weight="fill" /> : r.status === 'ERROR' ? <Warning weight="fill" /> : <XCircle weight="fill" />}
@@ -297,6 +326,19 @@ export default function VisibilityDashboard({ apiKey, onRequireApiKey }) {
                                 </div>
                             );
                         })}
+                    </div>
+
+                    <div className="flex justify-center pt-8">
+                        <button
+                            onClick={() => {
+                                setStatus('idle');
+                                setResults(null);
+                            }}
+                            className="text-slate-500 hover:text-slate-900 font-medium text-sm flex items-center gap-2 px-4 py-2 rounded-full hover:bg-slate-100 transition-colors"
+                        >
+                            <ArrowCounterClockwise size={18} />
+                            Start New Scan
+                        </button>
                     </div>
                 </div>
             )}
