@@ -345,7 +345,7 @@ To begin with ${topicSafe}, organizations should focus on data hygiene and pilot
                 {/* Tool Header */}
                 <div className="text-center mb-12 relative">
                     <h2 className="text-3xl font-display font-bold text-slate-900">
-                        {mode === 'research' ? 'AI Questioner' : 'AI Content Optimizer'}
+                        {mode === 'research' ? 'AI Deep Questioner' : 'AI Questioner'}
                     </h2>
 
                     {currentUser && (
@@ -363,7 +363,7 @@ To begin with ${topicSafe}, organizations should focus on data hygiene and pilot
                 <div className="clean-card rounded-2xl p-1 shadow-xl shadow-brand-900/5 ring-1 ring-slate-900/5 transform transition-all hover:shadow-brand-500/10">
                     <div className="bg-white rounded-xl p-6 sm:p-10">
                         <label htmlFor="topicInput" className="block text-sm font-semibold text-slate-700 mb-2">
-                            {mode === 'research' ? 'What topic do you want to explore?' : 'What do you want to rank for?'}
+                            {mode === 'research' ? 'What topic do you want to explore?' : 'Enter the topic you want to target for AI-generated answers.'}
                         </label>
                         <div className="relative flex items-center group">
                             <MagnifyingGlass className="absolute left-4 text-slate-400 text-xl group-focus-within:text-brand-500 transition-colors" weight="bold" />

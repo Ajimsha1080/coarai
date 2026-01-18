@@ -56,10 +56,10 @@ export default function Navbar() {
         tools: {
             title: "Optimization Suite",
             items: [
-                { name: "AI Content Optimizer", desc: "Generate citation-optimized answers", icon: Sparkle, bg: "bg-purple-50 text-purple-600", path: "/optimizer" },
+                { name: "AI Questioner", desc: "Generate citation-optimized answers", icon: Sparkle, bg: "bg-purple-50 text-purple-600", path: "/optimizer" },
                 { name: "Script Optimizer", desc: "Convert scripts for AI readability", icon: MagicWand, bg: "bg-indigo-50 text-indigo-600", path: "/script-optimizer" },
                 { name: "YouTube Optimizer", desc: "Rank videos in multimodal search", icon: YoutubeLogo, bg: "bg-red-50 text-red-600", path: "/youtube-optimizer" },
-                { name: "AI Questioner", desc: "Discover high-intent user questions", icon: MagnifyingGlass, bg: "bg-blue-50 text-blue-600", path: "/questioner" },
+                { name: "AI Deep Questioner", desc: "Discover high-intent user questions", icon: MagnifyingGlass, bg: "bg-blue-50 text-blue-600", path: "/questioner" },
             ]
         }
     };

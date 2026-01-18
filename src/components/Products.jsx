@@ -50,7 +50,7 @@ export default function Products() {
                         <div className="w-14 h-14 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center text-3xl mb-6 shadow-sm group-hover:scale-110 transition-transform">
                             <MagnifyingGlass weight="bold" />
                         </div>
-                        <h3 className="text-2xl font-display font-bold text-slate-900 mb-3">AI Questioner</h3>
+                        <h3 className="text-2xl font-display font-bold text-slate-900 mb-3">AI Deep Questioner</h3>
                         <p className="text-slate-600 mb-8 leading-relaxed">
                             Discover exactly what users are asking online. Our engine analyses real-time search data using Tavily to identify the high-intent questions your audience needs answers to right now.
                         </p>
@@ -73,7 +73,7 @@ export default function Products() {
                         <div className="w-14 h-14 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center text-3xl mb-6 shadow-sm group-hover:scale-110 transition-transform">
                             <Sparkle weight="bold" />
                         </div>
-                        <h3 className="text-2xl font-display font-bold text-slate-900 mb-3">AI Content Optimizer</h3>
+                        <h3 className="text-2xl font-display font-bold text-slate-900 mb-3">AI Questioner</h3>
                         <p className="text-slate-600 mb-8 leading-relaxed">
                             Turn insights into authority. Automatically generate citation-optimized answers, structured specifically to be picked up by AI Overviews and Answer Engines like Perplexity.
                         </p>
