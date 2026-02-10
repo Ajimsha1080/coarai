@@ -1,7 +1,9 @@
 const MODELS = [
-    "gemini-2.0-flash-exp",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
+    "gemini-2.0-flash", // Primary Model (Fast & Smart)
+    "gemini-2.5-flash", // Newer Model
+    "gemini-2.5-pro",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash", // Fallback (if available in other regions)
     "gemini-1.5-pro"
 ];
 
@@ -114,9 +116,10 @@ export async function resilientGeminiCall(apiKey, payload, maxRetries = 2) {
             });
         } else if (payload.contents?.[0]?.parts?.[0]?.text?.includes("brandAnalysis")) {
             // Brand Audit Mock
+            const debugMsg = lastError ? `(Debug: ${lastError.message})` : "(No error info)";
             simulatedText = JSON.stringify({
-                brandAnalysis: "### Simulation\nThis is a fallback response.",
-                contentAnalysis: "### Analysis\nContent appears robust but lacks citations.",
+                brandAnalysis: `### Simulation\nThis is a fallback response.\n\n**Debug Info:** ${debugMsg}`,
+                contentAnalysis: `### Analysis\nContent appears robust but lacks citations.\n\n**Error Trace:** ${debugMsg}`,
                 scores: { aiAccuracy: 80, geoReadiness: 70, contentCompleteness: 90, contentContextClarity: 85 }
             });
         } else {

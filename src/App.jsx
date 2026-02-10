@@ -17,6 +17,12 @@ import YouTubeOptimizer from './pages/YouTubeOptimizer';
 import CitationIntelligencePage from './pages/CitationIntelligencePage';
 import PromptVisibilityPage from './pages/PromptVisibilityPage';
 
+import InfluenceScore from './pages/InfluenceScore';
+import BrandTwin from './pages/BrandTwin';
+import IntentPrediction from './pages/IntentPrediction';
+import CampaignManager from './pages/CampaignManager';
+import LiveAnswerInjection from './pages/LiveAnswerInjection';
+
 // ✅ Lazy-loaded page (path must match EXACT folder name)
 const AiMonitorPage = React.lazy(
     () => import('./pages/aimonitor/AiMonitorPage')
@@ -211,6 +217,13 @@ function App() {
                                     />
                                 }
                             />
+
+                            {/* NEW MODULES */}
+                            <Route path="/influence-score" element={<InfluenceScore />} />
+                            <Route path="/brand-twin" element={<BrandTwin />} />
+                            <Route path="/intent-prediction" element={<IntentPrediction />} />
+                            <Route path="/campaign-manager" element={<CampaignManager />} />
+                            <Route path="/live-answer-injection" element={<LiveAnswerInjection />} />
 
                             {/* 404 Catch-All */}
                             <Route path="*" element={

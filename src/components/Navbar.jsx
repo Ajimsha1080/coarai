@@ -16,7 +16,10 @@ import {
     MagnifyingGlass,
     Sun,
     Moon,
-    Eye
+    Eye,
+    Target,
+    Robot,
+    Lightning
 } from '@phosphor-icons/react';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -54,12 +57,13 @@ export default function Navbar() {
             ]
         },
         tools: {
-            title: "Optimization Suite",
+            title: "CoAra Modules (New)",
             items: [
-                { name: "AI Questioner", desc: "Generate citation-optimized answers", icon: Sparkle, bg: "bg-purple-50 text-purple-600", path: "/optimizer" },
-                { name: "Script Optimizer", desc: "Convert scripts for AI readability", icon: MagicWand, bg: "bg-indigo-50 text-indigo-600", path: "/script-optimizer" },
-                { name: "YouTube Optimizer", desc: "Rank videos in multimodal search", icon: YoutubeLogo, bg: "bg-red-50 text-red-600", path: "/youtube-optimizer" },
-                { name: "AI Deep Questioner", desc: "Discover high-intent user questions", icon: MagnifyingGlass, bg: "bg-blue-50 text-blue-600", path: "/questioner" },
+                { name: "Influence Score", desc: "Track brand visibility", icon: ChartLineUp, bg: "bg-indigo-50 text-indigo-600", path: "/influence-score" },
+                { name: "Brand Twin", desc: "Programmable AI identity", icon: Brain, bg: "bg-violet-50 text-violet-600", path: "/brand-twin" },
+                { name: "Intent Prediction", desc: "Predict buyer journey", icon: Target, bg: "bg-blue-50 text-blue-600", path: "/intent-prediction" },
+                { name: "Campaign Manager", desc: "Autonomous ad ops", icon: Robot, bg: "bg-green-50 text-green-600", path: "/campaign-manager" },
+                { name: "Answer Injection", desc: "Control AI answers", icon: Lightning, bg: "bg-amber-50 text-amber-600", path: "/live-answer-injection" },
             ]
         }
     };
